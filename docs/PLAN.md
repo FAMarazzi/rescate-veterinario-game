@@ -1,10 +1,12 @@
 # Rescate Veterinario – Plan de 20 días
 
-Entrega: **18/11/2026 23:59**. Hoy: 26/10. Reglas: de menos a más, commit todos los días, cada sistema funcionando antes de pasar al siguiente.
+Entrega: **18/11/2026 23:59**. Arranqué el 26/10. Voy de menos a más: commit todos los días y cada sistema tiene que andar antes de pasar al siguiente.
+
+> Las fechas del cronograma son una estimación mía. Si algo se atrasa o se adelanta, actualizo la tabla y lo anoto en el registro de avance de abajo.
 
 ## Checklist de la consigna (todo esto tiene que estar al final)
-- [ ] Top view 45°, jugador se mueve libre
-- [ ] Melee + Ranged (dardos)
+- [x] Top view 45°, jugador se mueve libre (día 1)
+- [x] Melee + Ranged (dardos con pool) (día 1, falta probarlos contra enemigos)
 - [ ] Recibir / ocasionar daño, eliminar enemigos
 - [ ] Recolectar y usar ítems (botiquín, antídoto)
 - [ ] Interactuar con el escenario (jaulas, puertas, palancas)
@@ -55,7 +57,20 @@ Entrega: **18/11/2026 23:59**. Hoy: 26/10. Reglas: de menos a más, commit todos
 - **Efectos:** golpe, dardo, maullido, ladrido, puerta, jaula, pickup, victoria, derrota.
 - **Fuente:** Google Fonts (por ejemplo una redondeada que combine con los gatos).
 - **Animación:** por código (rebote, escala, rotación). Mixamo solo para el veterinario si es humanoide.
-- **Créditos:** tu nombre, herramientas de IA (Meshy), fuentes de audio.
+- **Créditos:** mi nombre, las herramientas de IA que usé (Meshy) y las fuentes del audio.
 
-## Regla de oro
-Si un día se atrasa, se **recorta contenido** (por ejemplo el nivel 2), nunca se corta el menú, el audio ni la entrega.
+## Si me atraso
+Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no recorto es el menú, el audio ni la entrega.
+
+## Hitos del profe vs. este plan
+| Hito | Qué pide | Dónde cae en mi plan | Estado |
+|---|---|---|---|
+| 0 – Preproducción | Nombre, Game Concept, repo, backlog | Día 1 y 20 (Game Concept), Issues en GitHub | En curso |
+| 1 – Core Gameplay | Movimiento, cámara, enemigo, daño, combate básico | Días 1 a 6 | En curso (falta enemigo) |
+| 2 – Vertical Slice | Melee, ranged, enemigos, items, objetivo, ganar o perder | Días 7 a 12 | Pendiente |
+| 3 – Producción | Niveles, variantes, UI, audio | Días 13 a 17 | Pendiente |
+| 4 – Feature Complete | Sistemas listos, bugs y balance | Día 18 | Pendiente |
+| 5 – Release | Build, docs, créditos, flujo completo | Días 19 y 20 | Pendiente |
+
+## Registro de avance
+- **26/10 (día 1):** repo creado, `Entity` e `IDamageable`, jugador con movimiento, melee y dardos, pool de balas, cámara top view, escena de prueba.
