@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 1:06:19 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 10/26/2026, 3:55:00 PM
+ * @LastEditTime: 10/29/2026, 5:04:04 PM
  * @Description: El veterinario jugable. Lo traje del PlayerController del proyecto anterior.
  *   CAMBIOS: saqué todo lo del barco (olas, bamboleo, cañones). Ahora uso el Input System nuevo
  *   (WASD y mouse), miro hacia el mouse, click izquierdo es melee con empuje y click derecho
@@ -22,6 +22,7 @@ public class PlayerController : Entity
     [Header("Movimiento")]
     [SerializeField] private float _speed = 7f;
     [SerializeField] private float _drag = 8f; // qué tan rápido frena la inercia cuando suelto las teclas
+    [SerializeField] private float _turnSpeed = 15f; // qué tan rápido gira el cuerpo hacia donde camina
 
     [Header("Melee (click izquierdo)")]
     [SerializeField] private float _meleeDamage = 20f;
@@ -30,9 +31,14 @@ public class PlayerController : Entity
     [SerializeField] private float _meleePushForce = 8f;   // cuánto empujo al enemigo
     [SerializeField] private float _meleeCooldown = 0.5f;
 
-    [Header("Dardos (click derecho)")]
+    [Header("Dardos (apuntar con click derecho, disparar con click izquierdo)")]
     [SerializeField] private Transform _shootPoint;
     [SerializeField] private float _shootCooldown = 0.8f;
+    [SerializeField] private float _aimSpeedMultiplier = 0.6f; // camino más lento mientras apunto
+
+    [Header("Animación")]
+    [SerializeField] private Animator _animator; // si lo dejo vacío lo busco en el modelo hijo
+    [SerializeField] private float _animDamp = 0.1f; // suaviza el cambio entre quieto, caminar y correr
 
     [Header("Respawn")]
     [SerializeField] private Transform _spawnPoint;
@@ -44,6 +50,13 @@ public class PlayerController : Entity
     private float _meleeTimer;
     private float _shootTimer;
     private bool _controlEnabled = true;
+    private bool _isAiming; // true mientras mantengo el click derecho
+
+    // Hasheo los nombres de los parámetros del Animator (es más rápido que usar strings)
+    private static readonly int SpeedHash = Animator.StringToHash("Speed");
+    private static readonly int MeleeHash = Animator.StringToHash("Melee");
+    private static readonly int ShootHash = Animator.StringToHash("Shoot");
+    private static readonly int AimingHash = Animator.StringToHash("Aiming");
 
     protected override void Awake()
     {
@@ -52,13 +65,19 @@ public class PlayerController : Entity
         _rb.constraints = RigidbodyConstraints.FreezeRotation; // que el jugador no se caiga ni se dé vuelta
         _cam = Camera.main;
         if (_shootPoint == null) _shootPoint = transform; // si no puse punto de disparo, salen desde el centro
+        if (_animator == null) _animator = GetComponentInChildren<Animator>();
     }
 
     private void Update()
     {
         if (!_controlEnabled) return;
 
-        AimAtMouse();
+        // CAMBIO: el cuerpo gira hacia donde camina, salvo que esté apuntando (click derecho mantenido):
+        // ahí mira al mouse todo el tiempo
+        _isAiming = Mouse.current != null && Mouse.current.rightButton.isPressed;
+        if (_isAiming) AimAtMouse();
+        SetAnimBool(AimingHash, _isAiming);
+
         HandleAttacks();
     }
 
@@ -68,6 +87,7 @@ public class PlayerController : Entity
         {
             // si el jugador está muerto lo freno en seco (menos la Y para que siga cayendo si hace falta)
             _rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
+            SetAnimFloat(SpeedHash, 0f);
             return;
         }
         HandleMovement();
@@ -89,15 +109,54 @@ public class PlayerController : Entity
         Vector3 direction = new Vector3(input.x, 0f, input.y).normalized;
 
         if (direction.sqrMagnitude > 0.01f)
-            _currentVelocity = direction * _speed;
+        {
+            float currentSpeed = _isAiming ? _speed * _aimSpeedMultiplier : _speed;
+            _currentVelocity = direction * currentSpeed;
+
+            // Giro suave hacia donde me estoy moviendo (si estoy apuntando, el cuerpo mira al mouse y no gira acá)
+            if (!_isAiming)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(direction);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, _turnSpeed * Time.fixedDeltaTime);
+            }
+        }
         else
             // Inercia: si no toco nada voy frenando de a poco
             _currentVelocity = Vector3.Lerp(_currentVelocity, Vector3.zero, _drag * Time.fixedDeltaTime);
 
         _rb.linearVelocity = new Vector3(_currentVelocity.x, _rb.linearVelocity.y, _currentVelocity.z);
+
+        // Le paso la velocidad al Animator: 0 = quieto, hasta _speed = corriendo
+        SetAnimFloat(SpeedHash, _currentVelocity.magnitude);
     }
 
-    // CAMBIO: nuevo. Como es top view, el jugador mira hacia donde está el mouse sobre el piso
+    // Solo toco el parámetro si existe en el controller, así no me llena la consola de warnings
+    private void SetAnimFloat(int hash, float value)
+    {
+        if (_animator != null && HasParam(hash, AnimatorControllerParameterType.Float))
+            _animator.SetFloat(hash, value, _animDamp, Time.deltaTime);
+    }
+
+    private void SetAnimBool(int hash, bool value)
+    {
+        if (_animator != null && HasParam(hash, AnimatorControllerParameterType.Bool))
+            _animator.SetBool(hash, value);
+    }
+
+    private void SetAnimTrigger(int hash)
+    {
+        if (_animator != null && HasParam(hash, AnimatorControllerParameterType.Trigger))
+            _animator.SetTrigger(hash);
+    }
+
+    private bool HasParam(int hash, AnimatorControllerParameterType type)
+    {
+        foreach (AnimatorControllerParameter p in _animator.parameters)
+            if (p.nameHash == hash && p.type == type) return true;
+        return false;
+    }
+
+    // CAMBIO: nuevo. Como es top view, miro hacia donde está el mouse sobre el piso, pero solo cuando ataco
     private void AimAtMouse()
     {
         if (_cam == null || Mouse.current == null) return;
@@ -125,22 +184,30 @@ public class PlayerController : Entity
         Mouse mouse = Mouse.current;
         if (mouse == null) return;
 
-        if (mouse.leftButton.wasPressedThisFrame && _meleeTimer <= 0f)
+        // Click izquierdo: si estoy apuntando disparo el dardo, si no pego con el melee
+        if (mouse.leftButton.wasPressedThisFrame)
         {
-            MeleeAttack();
-            _meleeTimer = _meleeCooldown;
-        }
-
-        if (mouse.rightButton.wasPressedThisFrame && _shootTimer <= 0f)
-        {
-            ShootDart();
-            _shootTimer = _shootCooldown;
+            if (_isAiming)
+            {
+                if (_shootTimer <= 0f)
+                {
+                    ShootDart();
+                    _shootTimer = _shootCooldown;
+                }
+            }
+            else if (_meleeTimer <= 0f)
+            {
+                AimAtMouse(); // giro hacia el mouse antes de pegar
+                MeleeAttack();
+                _meleeTimer = _meleeCooldown;
+            }
         }
     }
 
     // CAMBIO: nuevo. Golpe cuerpo a cuerpo, daño y empujo todo lo que esté adelante mío en un cono
     private void MeleeAttack()
     {
+        SetAnimTrigger(MeleeHash);
         Collider[] hits = Physics.OverlapSphere(transform.position, _meleeRange);
 
         foreach (Collider hit in hits)
@@ -167,6 +234,7 @@ public class PlayerController : Entity
     // Tiro un dardo sacándolo del pool en vez de hacer Instantiate
     private void ShootDart()
     {
+        SetAnimTrigger(ShootHash);
         if (BulletPool.Instance == null) return;
 
         BulletController bc = BulletPool.Instance.Get(_shootPoint.position, _shootPoint.rotation);
