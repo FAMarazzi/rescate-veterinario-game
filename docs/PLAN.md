@@ -74,3 +74,29 @@ Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no r
 
 ## Registro de avance
 - **26/10 (día 1):** repo creado, `Entity` e `IDamageable`, jugador con movimiento, melee y dardos, pool de balas, cámara top view, escena de prueba.
+- **27 y 28/10 (días 2 y 3):** no avancé. Los dos días de atraso los estoy recuperando entre hoy y mañana.
+- **29/10 (día 4):** importé los modelos de Meshy a `Assets/Models` (veterinaria con animaciones, arma, dardo, jaula, piso, pared y pared con puerta). Borré los `.zip` y la jaula duplicada. Armé el prefab del jugador con el modelo como hijo (`Model`) y su Animator. Cambié el control del jugador (detalle abajo) y dejé todas las animaciones andando. Falta caminar hacia atrás y de costado: queda para el final y es poco probable que llegue a la entrega.
+
+## Estado actual del jugador (29/10)
+- **Movimiento:** WASD, el cuerpo gira suave hacia donde camina (`_turnSpeed`).
+- **Apuntar:** click derecho mantenido. El cuerpo mira al mouse y camina más lento (`_aimSpeedMultiplier`).
+- **Disparar:** click izquierdo mientras apunto. Sin apuntar, el click izquierdo es el golpe melee.
+- **Animator:** el script manda `Speed` (Float), `Aiming` (Bool), `Melee` y `Shoot` (Trigger). Si un parámetro no existe en el controller, se ignora sin error.
+
+## Notas técnicas (para retomar en otra PC)
+- **Animator en `Model`, no en `Player`.** Un solo Animator, con **Apply Root Motion desmarcado**. Si se marca, el modelo se separa del `Player` y parece que gira alrededor del centro del mapa.
+- **FBX de la veterinaria:** uso `..._Meshy_Merged_Animations.fbx` (tiene malla y clips). Rig en Generic y **Loop Time** marcado en los clips de caminar, correr y apuntar. También hay un FBX con el clip `Rifle_Aim_Turn_Right`.
+- **Animator sin Any State para apuntar.** Las flechas Idle/Walking/Running → Apuntar usan `Aiming` = true, y las de Idle/Walking/Running entre sí llevan además `Aiming` = false. Con Any State, el clip se reinicia o compite con otras flechas.
+- **Rigidbody del jugador:** si la cámara tiembla, poner Interpolate. La cámara (`CameraFollow`) tiene que estar suelta en la raíz de la Hierarchy y no como hija del `Player`.
+- **Peso de los modelos:** cada FBX de entorno pesa unos 14 MB. Los `.zip` no se suben al repo. GitHub rechaza archivos de más de 100 MB.
+- **Materiales rosas:** Edit → Rendering → Materials → Convert Selected Built-in Materials to URP.
+
+## Próximos pasos
+1. **Sala de prueba (hoy):**
+   - Hacer un prefab de `Piso`, `Pared` y `ParedPuerta` en `Assets/Prefabs/Level`, todos con la misma medida (piso de 4×4 m, pared de 4 m de largo y unos 3 de alto).
+   - Usar Box Collider, no Mesh Collider.
+   - Armar `Sala1` con 3×3 pisos y paredes alrededor, con snap por vértice (tecla V).
+2. **NavMesh (hoy):** instalar el paquete AI Navigation (`com.unity.ai.navigation`), agregar un NavMesh Surface a la sala y hacer Bake.
+3. **Enemigos (mañana):** `Enemy` (abstract, con estados Idle, Chase, Attack y Dead) y `CorruptCat` (melee). Conectar el daño del melee y de los dardos del jugador contra ellos.
+4. **Modelos que faltan en Meshy:** gato corrupto, perro corrupto, Dibu, Cuti, gatitos, botiquín y antídoto. Para arrancar alcanzan un gato y un perro.
+5. **Performance:** si el piso se pone lento, desactivar sombras en sus Mesh Renderers y mirar los Tris en la ventana Stats.
