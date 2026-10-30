@@ -1,9 +1,9 @@
 /**FileHeader
  * @Author: Federico Marazzi
- * @Date: 10/30/2026, 10:46:00 AM
+ * @Date: 10/30/2026, 11:27:00 AM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 10/30/2026, 10:45:49 AM
- * @Description: Herramienta de Editor para generar matrices de piso/paredes en un click.
+ * @LastEditTime: 10/30/2026, 11:26:35 AM
+ * @Description: Generador completo de niveles: Pisos en matriz, Paredes perimetrales y Habitaciones interiores con puertas.
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
  * @Email: federicoandresmarazzi@gmail.com
  */
@@ -13,99 +13,296 @@ using UnityEngine;
 
 public class RoomBuilderWindow : EditorWindow
 {
-    private GameObject _tilePrefab;
-    private int _columns = 5;
-    private int _rows = 5;
-    private float _tileSize = 1.885f; // Apenas más chica que 1.903 para que se solapen milimétricamente y no quede luz
-    private bool _randomRotation = true; // Rota al azar 0°, 90°, 180° o 270° para romper la monotonía visual
-    private string _parentName = "Sala1_Piso";
+    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores }
+    private Tab _currentTab = Tab.Piso;
 
-    [MenuItem("Tools/Generador de Pisos")]
+    [Header("Configuración General")]
+    private int _columns = 20;
+    private int _rows = 20;
+    private float _tileSize = 1.885f;
+
+    [Header("Prefabs")]
+    private GameObject _tilePrefab;
+    private GameObject _wallPrefab;
+    private GameObject _doorWallPrefab;
+
+    [Header("Opciones Piso")]
+    private bool _randomRotation = true;
+
+    [Header("Opciones Perímetro")]
+    private bool _addPerimeterDoors = true;
+    private int _doorsPerSide = 1;
+
+    [Header("Opciones Habitaciones Interiores")]
+    private int _roomGridStep = 5; // Tamaño de cada consultorio en baldosas (ej: cada 5 baldosas una pared)
+    [Range(0.1f, 0.8f)] private float _doorwayChance = 0.35f; // Probabilidad de que un módulo de pared sea puerta
+
+    [MenuItem("Tools/Generador de Nivel")]
     public static void ShowWindow()
     {
-        GetWindow<RoomBuilderWindow>("Generador de Pisos");
+        GetWindow<RoomBuilderWindow>("Generador de Nivel");
     }
 
     private void OnGUI()
     {
-        GUILayout.Label("Generador de Matriz de Pisos", EditorStyles.boldLabel);
-        EditorGUILayout.Space();
+        GUILayout.Label("Generador de Clínica Veterinaria", EditorStyles.boldLabel);
+        EditorGUILayout.Space(5);
 
-        _tilePrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Baldosa", _tilePrefab, typeof(GameObject), true);
-        _columns = EditorGUILayout.IntSlider("Columnas (X)", _columns, 1, 20);
-        _rows = EditorGUILayout.IntSlider("Filas (Z)", _rows, 1, 20);
-        _tileSize = EditorGUILayout.FloatField("Distancia entre Baldosas (m)", _tileSize);
-        _randomRotation = EditorGUILayout.Toggle("Rotación Aleatoria (90°)", _randomRotation);
-        _parentName = EditorGUILayout.TextField("Nombre del Padre", _parentName);
+        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Paredes Exteriores", "3. Salas Interiores" });
+        EditorGUILayout.Space(10);
+
+        // Campos globales compartidos
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        GUILayout.Label("Dimensiones Globales del Mapa", EditorStyles.miniBoldLabel);
+        _columns = EditorGUILayout.IntSlider("Columnas (X)", _columns, 4, 40);
+        _rows = EditorGUILayout.IntSlider("Filas (Z)", _rows, 4, 40);
+        _tileSize = EditorGUILayout.FloatField("Tamaño Baldosa / Pared (m)", _tileSize);
+        EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space(10);
 
-        if (GUILayout.Button("Generar Matriz de Piso", GUILayout.Height(35)))
+        switch (_currentTab)
         {
-            GenerateGrid();
+            case Tab.Piso:
+                DrawFloorTab();
+                break;
+            case Tab.ParedesPerimetro:
+                DrawPerimeterTab();
+                break;
+            case Tab.HabitacionesInteriores:
+                DrawInteriorRoomsTab();
+                break;
         }
     }
 
-    private void GenerateGrid()
+    private void DrawFloorTab()
+    {
+        GUILayout.Label("Piso Modular", EditorStyles.boldLabel);
+        _tilePrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Baldosa", _tilePrefab, typeof(GameObject), true);
+        _randomRotation = EditorGUILayout.Toggle("Rotación Aleatoria (90°)", _randomRotation);
+
+        EditorGUILayout.Space(15);
+        if (GUILayout.Button("Generar Piso Completo", GUILayout.Height(35)))
+        {
+            GenerateFloor();
+        }
+    }
+
+    private void DrawPerimeterTab()
+    {
+        GUILayout.Label("Paredes Exteriores (Perímetro 4 lados)", EditorStyles.boldLabel);
+        _wallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
+        _doorWallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Pared con Puerta (Opcional)", _doorWallPrefab, typeof(GameObject), true);
+        _addPerimeterDoors = EditorGUILayout.Toggle("Incluir Puertas en Perímetro", _addPerimeterDoors);
+        if (_addPerimeterDoors)
+        {
+            _doorsPerSide = EditorGUILayout.IntSlider("Puertas por lado", _doorsPerSide, 1, 3);
+        }
+
+        EditorGUILayout.Space(15);
+        if (GUILayout.Button("Construir Perímetro de Paredes", GUILayout.Height(35)))
+        {
+            GeneratePerimeter();
+        }
+    }
+
+    private void DrawInteriorRoomsTab()
+    {
+        GUILayout.Label("División de Habitaciones / Consultorios", EditorStyles.boldLabel);
+        _wallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
+        _doorWallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Pared con Puerta", _doorWallPrefab, typeof(GameObject), true);
+        
+        EditorGUILayout.Space(5);
+        _roomGridStep = EditorGUILayout.IntSlider("Tamaño de Salas (baldosas)", _roomGridStep, 3, 10);
+        _doorwayChance = EditorGUILayout.Slider("Probabilidad de Puertas", _doorwayChance, 0.1f, 0.8f);
+
+        EditorGUILayout.HelpBox($"Dividirá el mapa de {_columns}x{_rows} en habitaciones de aprox {_roomGridStep}x{_roomGridStep} baldosas con puertas aleatorias entre ellas.", MessageType.Info);
+
+        EditorGUILayout.Space(15);
+        if (GUILayout.Button("Generar Salas Interiores", GUILayout.Height(35)))
+        {
+            GenerateInteriorRooms();
+        }
+    }
+
+    // ==========================================
+    // 1. GENERAR PISO
+    // ==========================================
+    private void GenerateFloor()
     {
         if (_tilePrefab == null)
         {
-            EditorUtility.DisplayDialog("Error", "Arrastrá la baldosa o su prefab al campo 'Prefab de Baldosa'.", "OK");
+            EditorUtility.DisplayDialog("Error", "Asigná el prefab de baldosa.", "OK");
             return;
         }
 
-        // Si ya existe la sala anterior, preguntamos o limpiamos para no acumular pisos viejos encima
-        GameObject existingParent = GameObject.Find(_parentName);
-        if (existingParent != null)
-        {
-            if (EditorUtility.DisplayDialog("Aviso", $"Ya existe un objeto llamado '{_parentName}'. ¿Querés reemplazarlo?", "Reemplazar", "Crear Nuevo"))
-            {
-                Undo.DestroyObjectImmediate(existingParent);
-            }
-        }
+        GameObject parent = GetOrCreateParent("Clinica_Piso");
+        ClearChildren(parent);
 
-        GameObject parent = new GameObject(_parentName);
-        parent.transform.position = Vector3.zero;
-        Undo.RegisterCreatedObjectUndo(parent, "Crear Sala Piso");
-
-        // Centramos la matriz respecto al origen
         float startX = -((_columns - 1) * _tileSize) * 0.5f;
         float startZ = -((_rows - 1) * _tileSize) * 0.5f;
-
-        Quaternion baseRotation = _tilePrefab.transform.rotation;
+        Quaternion baseRot = _tilePrefab.transform.rotation;
 
         for (int r = 0; r < _rows; r++)
         {
             for (int c = 0; c < _columns; c++)
             {
                 Vector3 pos = new Vector3(startX + (c * _tileSize), 0f, startZ + (r * _tileSize));
-                
-                // Rotación aleatoria en pasos de 90° sobre el eje Y del mundo (para no romper la inclinación horizontal)
-                Quaternion finalRot = baseRotation;
+                Quaternion rot = baseRot;
                 if (_randomRotation)
                 {
-                    int quarterTurns = Random.Range(0, 4); // 0, 1, 2 o 3
-                    finalRot = Quaternion.Euler(0f, quarterTurns * 90f, 0f) * baseRotation;
+                    rot = Quaternion.Euler(0f, Random.Range(0, 4) * 90f, 0f) * baseRot;
                 }
 
-                GameObject tile;
-                if (PrefabUtility.IsPartOfPrefabAsset(_tilePrefab))
-                {
-                    tile = (GameObject)PrefabUtility.InstantiatePrefab(_tilePrefab, parent.transform);
-                    tile.transform.SetPositionAndRotation(pos, finalRot);
-                }
-                else
-                {
-                    tile = Instantiate(_tilePrefab, pos, finalRot, parent.transform);
-                }
-
-                tile.name = $"Piso_{c}_{r}";
-                Undo.RegisterCreatedObjectUndo(tile, "Generar Baldosa");
+                SpawnPiece(_tilePrefab, pos, rot, parent.transform, $"Piso_{c}_{r}");
             }
         }
 
         Selection.activeGameObject = parent;
-        EditorUtility.DisplayDialog("Éxito", $"¡Matriz de {_columns}x{_rows} generada con éxito!", "Genial");
+        EditorUtility.DisplayDialog("Éxito", $"¡Piso de {_columns}x{_rows} generado!", "OK");
+    }
+
+    // ==========================================
+    // 2. GENERAR PERÍMETRO
+    // ==========================================
+    private void GeneratePerimeter()
+    {
+        if (_wallPrefab == null)
+        {
+            EditorUtility.DisplayDialog("Error", "Asigná el prefab de pared.", "OK");
+            return;
+        }
+
+        GameObject parent = GetOrCreateParent("Clinica_Perimetro");
+        ClearChildren(parent);
+
+        float halfW = (_columns * _tileSize) * 0.5f;
+        float halfH = (_rows * _tileSize) * 0.5f;
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+
+        Quaternion baseRot = _wallPrefab.transform.rotation;
+
+        // Paredes Norte (Z+) y Sur (Z-)
+        for (int c = 0; c < _columns; c++)
+        {
+            float posX = startX + (c * _tileSize);
+            bool isDoorN = _addPerimeterDoors && _doorWallPrefab != null && (c == _columns / 2);
+            bool isDoorS = _addPerimeterDoors && _doorWallPrefab != null && (c == _columns / 2);
+
+            // Borde Norte (mira hacia abajo / 180°)
+            GameObject prefabN = isDoorN ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefabN, new Vector3(posX, 0f, halfH), Quaternion.Euler(0f, 180f, 0f) * baseRot, parent.transform, $"Pared_Norte_{c}");
+
+            // Borde Sur (mira hacia arriba / 0°)
+            GameObject prefabS = isDoorS ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefabS, new Vector3(posX, 0f, -halfH), Quaternion.Euler(0f, 0f, 0f) * baseRot, parent.transform, $"Pared_Sur_{c}");
+        }
+
+        // Paredes Este (X+) y Oeste (X-)
+        for (int r = 0; r < _rows; r++)
+        {
+            float posZ = startZ + (r * _tileSize);
+            bool isDoorE = _addPerimeterDoors && _doorWallPrefab != null && (r == _rows / 2);
+            bool isDoorW = _addPerimeterDoors && _doorWallPrefab != null && (r == _rows / 2);
+
+            // Borde Este (mira hacia la izquierda / 270°)
+            GameObject prefabE = isDoorE ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefabE, new Vector3(halfW, 0f, posZ), Quaternion.Euler(0f, 270f, 0f) * baseRot, parent.transform, $"Pared_Este_{r}");
+
+            // Borde Oeste (mira hacia la derecha / 90°)
+            GameObject prefabW = isDoorW ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefabW, new Vector3(-halfW, 0f, posZ), Quaternion.Euler(0f, 90f, 0f) * baseRot, parent.transform, $"Pared_Oeste_{r}");
+        }
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog("Éxito", "¡Perímetro exterior construido!", "OK");
+    }
+
+    // ==========================================
+    // 3. GENERAR SALAS INTERIORES
+    // ==========================================
+    private void GenerateInteriorRooms()
+    {
+        if (_wallPrefab == null)
+        {
+            EditorUtility.DisplayDialog("Error", "Asigná el prefab de pared.", "OK");
+            return;
+        }
+
+        GameObject parent = GetOrCreateParent("Clinica_SalasInteriores");
+        ClearChildren(parent);
+
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+        Quaternion baseRot = _wallPrefab.transform.rotation;
+
+        // Paredes divisorias verticales (a lo largo de Z)
+        for (int c = _roomGridStep; c < _columns; c += _roomGridStep)
+        {
+            float posX = startX + (c * _tileSize) - (_tileSize * 0.5f);
+            for (int r = 0; r < _rows; r++)
+            {
+                float posZ = startZ + (r * _tileSize);
+                bool isDoor = (_doorWallPrefab != null) && (Random.value < _doorwayChance);
+                GameObject prefab = isDoor ? _doorWallPrefab : _wallPrefab;
+                SpawnPiece(prefab, new Vector3(posX, 0f, posZ), Quaternion.Euler(0f, 90f, 0f) * baseRot, parent.transform, $"Pared_Interna_V_{c}_{r}");
+            }
+        }
+
+        // Paredes divisorias horizontales (a lo largo de X)
+        for (int r = _roomGridStep; r < _rows; r += _roomGridStep)
+        {
+            float posZ = startZ + (r * _tileSize) - (_tileSize * 0.5f);
+            for (int c = 0; c < _columns; c++)
+            {
+                // Evitamos colocar pared exactamente donde ya se cruza con una vertical
+                if (c % _roomGridStep == 0) continue;
+
+                float posX = startX + (c * _tileSize);
+                bool isDoor = (_doorWallPrefab != null) && (Random.value < _doorwayChance);
+                GameObject prefab = isDoor ? _doorWallPrefab : _wallPrefab;
+                SpawnPiece(prefab, new Vector3(posX, 0f, posZ), Quaternion.Euler(0f, 0f, 0f) * baseRot, parent.transform, $"Pared_Interna_H_{c}_{r}");
+            }
+        }
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog("Éxito", "¡Salas interiores generadas con puertas!", "OK");
+    }
+
+    private GameObject GetOrCreateParent(string name)
+    {
+        GameObject parent = GameObject.Find(name);
+        if (parent == null)
+        {
+            parent = new GameObject(name);
+            parent.transform.position = Vector3.zero;
+            Undo.RegisterCreatedObjectUndo(parent, $"Crear {name}");
+        }
+        return parent;
+    }
+
+    private void ClearChildren(GameObject parent)
+    {
+        while (parent.transform.childCount > 0)
+        {
+            Undo.DestroyObjectImmediate(parent.transform.GetChild(0).gameObject);
+        }
+    }
+
+    private void SpawnPiece(GameObject prefab, Vector3 pos, Quaternion rot, Transform parent, string name)
+    {
+        GameObject obj;
+        if (PrefabUtility.IsPartOfPrefabAsset(prefab))
+        {
+            obj = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
+            obj.transform.SetPositionAndRotation(pos, rot);
+        }
+        else
+        {
+            obj = Instantiate(prefab, pos, rot, parent);
+        }
+        obj.name = name;
+        Undo.RegisterCreatedObjectUndo(obj, $"Spawn {name}");
     }
 }
-
