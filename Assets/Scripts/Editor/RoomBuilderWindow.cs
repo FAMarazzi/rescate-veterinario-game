@@ -112,17 +112,34 @@ public class RoomBuilderWindow : EditorWindow
         _wallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
         _doorWallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Pared con Puerta", _doorWallPrefab, typeof(GameObject), true);
         
+        EditorGUILayout.Space(10);
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        GUILayout.Label("🏥 PLANO REALISTA DE CLÍNICA (Recomendado)", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Genera una clínica completa adaptada al mapa 20x20:", EditorStyles.wordWrappedMiniLabel);
+        EditorGUILayout.LabelField("• Gran Recepción / Sala de Espera (12x8 baldosas)", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("• Farmacia / Depósito de ítems (8x8 baldosas)", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("• Pasillo central ancho distribuidor (4 baldosas)", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("• Consultorios médicos 1 y 2", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("• Sala de Jaulas (rescate de animales)", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("• Quirófano / Sala del Boss (al fondo)", EditorStyles.miniLabel);
         EditorGUILayout.Space(5);
-        _roomGridStep = EditorGUILayout.IntSlider("Tamaño de Salas (baldosas)", _roomGridStep, 3, 10);
-        _doorwayChance = EditorGUILayout.Slider("Probabilidad de Puertas", _doorwayChance, 0.1f, 0.8f);
-
-        EditorGUILayout.HelpBox($"Dividirá el mapa de {_columns}x{_rows} en habitaciones de aprox {_roomGridStep}x{_roomGridStep} baldosas con puertas aleatorias entre ellas.", MessageType.Info);
+        if (GUILayout.Button("🏥 Generar Plano Realista de Clínica", GUILayout.Height(38)))
+        {
+            GenerateClinicLayout();
+        }
+        EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space(15);
-        if (GUILayout.Button("Generar Salas Interiores", GUILayout.Height(35)))
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        GUILayout.Label("Distribución Modular Cuadriculada (Alternativa)", EditorStyles.boldLabel);
+        _roomGridStep = EditorGUILayout.IntSlider("Tamaño de Salas (baldosas)", _roomGridStep, 3, 10);
+        _doorwayChance = EditorGUILayout.Slider("Probabilidad de Puertas", _doorwayChance, 0.1f, 0.8f);
+        EditorGUILayout.Space(5);
+        if (GUILayout.Button("Generar Cuadrícula Modular de Salas", GUILayout.Height(30)))
         {
             GenerateInteriorRooms();
         }
+        EditorGUILayout.EndVertical();
     }
 
     // ==========================================
@@ -220,7 +237,94 @@ public class RoomBuilderWindow : EditorWindow
     }
 
     // ==========================================
-    // 3. GENERAR SALAS INTERIORES
+    // 3A. GENERAR PLANO REALISTA DE CLÍNICA
+    // ==========================================
+    private void GenerateClinicLayout()
+    {
+        if (_wallPrefab == null)
+        {
+            EditorUtility.DisplayDialog("Error", "Asigná el prefab de pared.", "OK");
+            return;
+        }
+
+        GameObject parent = GetOrCreateParent("Clinica_SalasInteriores");
+        ClearChildren(parent);
+
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+        Quaternion baseRot = _wallPrefab.transform.rotation;
+
+        // Pared vertical entre columna c-1 y c en fila r
+        void PutWallV(int c, int r, bool isDoor = false)
+        {
+            if (c <= 0 || c >= _columns || r < 0 || r >= _rows) return;
+            float px = startX + (c * _tileSize) - (_tileSize * 0.5f);
+            float pz = startZ + (r * _tileSize);
+            GameObject prefab = (isDoor && _doorWallPrefab != null) ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefab, new Vector3(px, 0f, pz), Quaternion.Euler(0f, 90f, 0f) * baseRot, parent.transform, $"Pared_V_{c}_{r}");
+        }
+
+        // Pared horizontal entre fila r-1 y r en columna c
+        void PutWallH(int c, int r, bool isDoor = false)
+        {
+            if (r <= 0 || r >= _rows || c < 0 || c >= _columns) return;
+            float px = startX + (c * _tileSize);
+            float pz = startZ + (r * _tileSize) - (_tileSize * 0.5f);
+            GameObject prefab = (isDoor && _doorWallPrefab != null) ? _doorWallPrefab : _wallPrefab;
+            SpawnPiece(prefab, new Vector3(px, 0f, pz), Quaternion.Euler(0f, 0f, 0f) * baseRot, parent.transform, $"Pared_H_{c}_{r}");
+        }
+
+        // 1. ZONA SUR: Separación Recepción (izq) vs Farmacia/Depósito (der) en Col 12 (Filas 0 a 7)
+        for (int r = 0; r < 8; r++)
+        {
+            bool isDoor = (r == 3); // Puerta entre Recepción y Farmacia
+            PutWallV(12, r, isDoor);
+        }
+
+        // 2. PARED QUE SEPARA ZONA SUR DEL PASILLO (en Fila 8)
+        for (int c = 0; c < _columns; c++)
+        {
+            // Dejamos libre el corredor central (Cols 8 a 11) para entrar desde Recepción al pasillo
+            if (c >= 8 && c <= 11) continue;
+
+            // Puerta que sale de Farmacia al pasillo en Col 15
+            bool isDoor = (c == 15);
+            PutWallH(c, 8, isDoor);
+        }
+
+        // 3. PASILLO CENTRAL (Cols 8 a 11): Paredes laterales del pasillo (Filas 8 a 19)
+        // Pared Izquierda (Col 8) -> da a Consultorio 1 y 2
+        for (int r = 8; r < _rows; r++)
+        {
+            bool isDoor = (r == 10 || r == 16); // Puertas a Consultorios 1 y 2
+            PutWallV(8, r, isDoor);
+        }
+
+        // Pared Derecha (Col 12) -> da a Jaulas y Quirófano
+        for (int r = 8; r < _rows; r++)
+        {
+            bool isDoor = (r == 10 || r == 16); // Puertas a Sala de Jaulas y Quirófano/Boss
+            PutWallV(12, r, isDoor);
+        }
+
+        // 4. DIVISORIA OESTE: Separa Consultorio 1 de Consultorio 2 (Fila 14, Cols 0..7)
+        for (int c = 0; c < 8; c++)
+        {
+            PutWallH(c, 14, false);
+        }
+
+        // 5. DIVISORIA ESTE: Separa Sala de Jaulas de Quirófano (Fila 14, Cols 12..19)
+        for (int c = 12; c < _columns; c++)
+        {
+            PutWallH(c, 14, false);
+        }
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog("Éxito", "¡Plano realista de Clínica Veterinaria generado con éxito!", "¡Genial!");
+    }
+
+    // ==========================================
+    // 3B. GENERAR SALAS MODULARES CUADRICULADAS
     // ==========================================
     private void GenerateInteriorRooms()
     {
