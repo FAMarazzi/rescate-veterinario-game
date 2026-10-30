@@ -76,14 +76,23 @@ Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no r
 - **26/10 (día 1):** repo creado, `Entity` e `IDamageable`, jugador con movimiento, melee y dardos, pool de balas, cámara top view, escena de prueba.
 - **27 y 28/10 (días 2 y 3):** no avancé. Los dos días de atraso los estoy recuperando entre hoy y mañana.
 - **29/10 (día 4):** importé los modelos de Meshy a `Assets/Models` (veterinaria con animaciones, arma, dardo, jaula, piso, pared y pared con puerta). Borré los `.zip` y la jaula duplicada. Armé el prefab del jugador con el modelo como hijo (`Model`) y su Animator. Cambié el control del jugador (detalle abajo) y dejé todas las animaciones andando. Falta caminar hacia atrás y de costado: queda para el final y es poco probable que llegue a la entrega.
+- **30/10 (día 5 - Mañana):**
+  - Calibré el dardo: salida desde el `_shootPoint` hacia el punto apuntado y ajuste de ángulo `_aimYawOffset` para que coincida con la animación.
+  - Armé herramienta de editor `RoomBuilderWindow.cs` para generar el piso modular 20x20 con rotación aleatoria de baldosas y paredes perimetrales automáticas.
+  - Generé el piso y el perímetro exterior de la clínica (guardado y pusheado al repo).
+  - **Decisión de Escala Paredes:** La pared viene de 1.03m de alto por defecto (parece un mostrador bajo al lado de las baldosas de 1.9m y el jugador no entra por la puerta). La solución limpia es agrandar la altura de las paredes en el prefab: poner **Scale Z = `2` (o `2.2`)** en `Pared.prefab` y `ParedPuerta.prefab`. Así mantiene el ancho de 1.9m (calza exacto con el piso), la altura sube a ~2.1m (altura de puerta y pared real) y el veterinario pasa perfecto sin tener que achicarlo.
 
-## Estado actual del jugador (29/10)
+## Estado actual del jugador (30/10)
 - **Movimiento:** WASD, el cuerpo gira suave hacia donde camina (`_turnSpeed`).
 - **Apuntar:** click derecho mantenido. El cuerpo mira al mouse y camina más lento (`_aimSpeedMultiplier`).
 - **Disparar:** click izquierdo mientras apunto. Sin apuntar, el click izquierdo es el golpe melee.
 - **Animator:** el script manda `Speed` (Float), `Aiming` (Bool), `Melee` y `Shoot` (Trigger). Si un parámetro no existe en el controller, se ignora sin error.
 
 ## Notas técnicas (para retomar en otra PC)
+- **Escala de Paredes (Para hacer al retomar a la tarde):**
+  - En `Assets/Prefabs/Pared.prefab` y `ParedPuerta.prefab`, poner en Transform **Scale Z = `2`** (o 2.2) y acomodar el Box Collider.
+  - Volver a tocar "Construir Perímetro de Paredes" en `Tools -> Generador de Nivel` para que tome la nueva altura.
+- **Herramienta de Nivel:** En menú `Tools -> Generador de Nivel` se pueden regenerar pisos, perímetro y salas interiores con 1 click.
 - **Animator en `Model`, no en `Player`.** Un solo Animator, con **Apply Root Motion desmarcado**. Si se marca, el modelo se separa del `Player` y parece que gira alrededor del centro del mapa.
 - **FBX de la veterinaria:** uso `..._Meshy_Merged_Animations.fbx` (tiene malla y clips). Rig en Generic y **Loop Time** marcado en los clips de caminar, correr y apuntar. También hay un FBX con el clip `Rifle_Aim_Turn_Right`.
 - **Animator sin Any State para apuntar.** Las flechas Idle/Walking/Running → Apuntar usan `Aiming` = true, y las de Idle/Walking/Running entre sí llevan además `Aiming` = false. Con Any State, el clip se reinicia o compite con otras flechas.
@@ -91,12 +100,11 @@ Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no r
 - **Peso de los modelos:** cada FBX de entorno pesa unos 14 MB. Los `.zip` no se suben al repo. GitHub rechaza archivos de más de 100 MB.
 - **Materiales rosas:** Edit → Rendering → Materials → Convert Selected Built-in Materials to URP.
 
-## Próximos pasos
-1. **Sala de prueba (hoy):**
-   - Hacer un prefab de `Piso`, `Pared` y `ParedPuerta` en `Assets/Prefabs/Level`, todos con la misma medida (piso de 4×4 m, pared de 4 m de largo y unos 3 de alto).
-   - Usar Box Collider, no Mesh Collider.
-   - Armar `Sala1` con 3×3 pisos y paredes alrededor, con snap por vértice (tecla V).
-2. **NavMesh (hoy):** instalar el paquete AI Navigation (`com.unity.ai.navigation`), agregar un NavMesh Surface a la sala y hacer Bake.
-3. **Enemigos (mañana):** `Enemy` (abstract, con estados Idle, Chase, Attack y Dead) y `CorruptCat` (melee). Conectar el daño del melee y de los dardos del jugador contra ellos.
-4. **Modelos que faltan en Meshy:** gato corrupto, perro corrupto, Dibu, Cuti, gatitos, botiquín y antídoto. Para arrancar alcanzan un gato y un perro.
-5. **Performance:** si el piso se pone lento, desactivar sombras en sus Mesh Renderers y mirar los Tris en la ventana Stats.
+## Hoja de ruta para retomar a la tarde (30/10):
+1. **Subir altura de paredes:** Poner `Scale Z = 2` en `Pared.prefab` y `ParedPuerta.prefab`, regenerar perímetro y salas interiores en `Tools -> Generador de Nivel`.
+2. **NavMesh:** Instalar paquete `AI Navigation`, poner `NavMeshSurface` y hornear (Bake) el piso de la clínica.
+3. **Enemigos (Core):**
+   - Escribir `Enemy.cs` (abstract con máquina de estados: `Idle -> Chase -> Attack -> Dead`).
+   - Crear `CorruptCat.cs` (enemigo melee rápido) con NavMeshAgent.
+   - Probar recibir y hacer daño con el bate (melee) y los dardos del jugador.
+
