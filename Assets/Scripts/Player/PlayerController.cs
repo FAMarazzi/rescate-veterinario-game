@@ -35,6 +35,7 @@ public class PlayerController : Entity
     [SerializeField] private Transform _shootPoint;
     [SerializeField] private float _shootCooldown = 0.8f;
     [SerializeField] private float _aimSpeedMultiplier = 0.6f; // camino más lento mientras apunto
+    [SerializeField] private float _aimYawOffset = 0f; // grados que giro el cuerpo al apuntar para que el arma de la animación quede sobre el mouse (probar con valores + y -)
 
     [Header("Animación")]
     [SerializeField] private Animator _animator; // si lo dejo vacío lo busco en el modelo hijo
@@ -51,6 +52,7 @@ public class PlayerController : Entity
     private float _shootTimer;
     private bool _controlEnabled = true;
     private bool _isAiming; // true mientras mantengo el click derecho
+    private Vector3 _aimPoint; // el punto del piso donde está el mouse, el dardo va hacia ahí
 
     // Hasheo los nombres de los parámetros del Animator (es más rápido que usar strings)
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
@@ -75,7 +77,7 @@ public class PlayerController : Entity
         // CAMBIO: el cuerpo gira hacia donde camina, salvo que esté apuntando (click derecho mantenido):
         // ahí mira al mouse todo el tiempo
         _isAiming = Mouse.current != null && Mouse.current.rightButton.isPressed;
-        if (_isAiming) AimAtMouse();
+        if (_isAiming) AimAtMouse(true);
         SetAnimBool(AimingHash, _isAiming);
 
         HandleAttacks();
@@ -157,7 +159,7 @@ public class PlayerController : Entity
     }
 
     // CAMBIO: nuevo. Como es top view, miro hacia donde está el mouse sobre el piso, pero solo cuando ataco
-    private void AimAtMouse()
+    private void AimAtMouse(bool applyAimOffset = false)
     {
         if (_cam == null || Mouse.current == null) return;
 
@@ -168,10 +170,15 @@ public class PlayerController : Entity
         if (ground.Raycast(ray, out float distance))
         {
             Vector3 point = ray.GetPoint(distance);
+            _aimPoint = point; // CAMBIO: lo guardo para que el dardo salga del arma hacia el mouse y no hacia adelante del cuerpo
             Vector3 look = point - transform.position;
             look.y = 0f; // solo gira de costado, que no se incline
             if (look.sqrMagnitude > 0.01f)
-                transform.rotation = Quaternion.LookRotation(look);
+            {
+                // CAMBIO: al apuntar sumo _aimYawOffset porque la animación tiene el arma girada respecto del cuerpo
+                float yaw = applyAimOffset ? _aimYawOffset : 0f;
+                transform.rotation = Quaternion.LookRotation(look) * Quaternion.Euler(0f, yaw, 0f);
+            }
         }
     }
 
@@ -237,8 +244,14 @@ public class PlayerController : Entity
         SetAnimTrigger(ShootHash);
         if (BulletPool.Instance == null) return;
 
-        BulletController bc = BulletPool.Instance.Get(_shootPoint.position, _shootPoint.rotation);
-        bc.Launch(transform.forward, gameObject.tag);
+        // CAMBIO: la dirección va desde el punto de disparo hasta el mouse (antes usaba transform.forward
+        // y, como el arma está corrida del centro, el dardo salía en diagonal)
+        Vector3 dir = _aimPoint - _shootPoint.position;
+        dir.y = 0f; // el dardo viaja plano
+        if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
+
+        BulletController bc = BulletPool.Instance.Get(_shootPoint.position, Quaternion.LookRotation(dir));
+        bc.Launch(dir, gameObject.tag);
     }
 
     // Piso el Die de Entity: el jugador no se destruye, espera un poco y hace respawn
