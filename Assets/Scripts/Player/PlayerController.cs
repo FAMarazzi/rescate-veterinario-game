@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 1:06:19 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 10/29/2026, 5:04:04 PM
+ * @LastEditTime: 11/5/2026, 5:25:25 PM
  * @Description: El veterinario jugable. Lo traje del PlayerController del proyecto anterior.
  *   CAMBIOS: saqué todo lo del barco (olas, bamboleo, cañones). Ahora uso el Input System nuevo
  *   (WASD y mouse), miro hacia el mouse, click izquierdo es melee con empuje y click derecho
@@ -36,6 +36,8 @@ public class PlayerController : Entity
     [SerializeField] private float _shootCooldown = 0.8f;
     [SerializeField] private float _aimSpeedMultiplier = 0.6f; // camino más lento mientras apunto
     [SerializeField] private float _aimYawOffset = 0f; // grados que giro el cuerpo al apuntar para que el arma de la animación quede sobre el mouse (probar con valores + y -)
+    [SerializeField] private GameObject _weaponIdle;   // arma ubicada para cuando apunta quieta (se oculta sola si no apunto)
+    [SerializeField] private GameObject _weaponMoving; // opcional: otra copia del arma ubicada para cuando apunta caminando
 
     [Header("Animación")]
     [SerializeField] private Animator _animator; // si lo dejo vacío lo busco en el modelo hijo
@@ -68,6 +70,9 @@ public class PlayerController : Entity
         _cam = Camera.main;
         if (_shootPoint == null) _shootPoint = transform; // si no puse punto de disparo, salen desde el centro
         if (_animator == null) _animator = GetComponentInChildren<Animator>();
+
+        // Arranco con el arma guardada en el bolsillo
+        UpdateWeaponVisibility();
     }
 
     private void Update()
@@ -79,8 +84,26 @@ public class PlayerController : Entity
         _isAiming = Mouse.current != null && Mouse.current.rightButton.isPressed;
         if (_isAiming) AimAtMouse(true);
         SetAnimBool(AimingHash, _isAiming);
+        UpdateWeaponVisibility();
 
         HandleAttacks();
+    }
+
+    // Muestro el arma solo mientras apunto; si puse dos posiciones distintas (quieta vs caminando), alterna sola
+    private void UpdateWeaponVisibility()
+    {
+        bool isMoving = _currentVelocity.sqrMagnitude > 0.05f;
+
+        if (_weaponMoving != null)
+        {
+            if (_weaponIdle != null)
+                _weaponIdle.SetActive(_isAiming && !isMoving);
+            _weaponMoving.SetActive(_isAiming && isMoving);
+        }
+        else if (_weaponIdle != null)
+        {
+            _weaponIdle.SetActive(_isAiming);
+        }
     }
 
     private void FixedUpdate()
@@ -163,14 +186,15 @@ public class PlayerController : Entity
     {
         if (_cam == null || Mouse.current == null) return;
 
-        // Tiro un rayo desde la cámara hasta el mouse y veo dónde toca el plano del piso
+        // Tiro un rayo desde la cámara hasta el mouse a la altura del arma (con cámara a 45°, usar el piso desfasa el tiro al apuntar abajo)
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        Plane ground = new Plane(Vector3.up, transform.position);
+        Transform origin = GetActiveShootPoint();
+        Plane aimPlane = new Plane(Vector3.up, origin.position);
 
-        if (ground.Raycast(ray, out float distance))
+        if (aimPlane.Raycast(ray, out float distance))
         {
             Vector3 point = ray.GetPoint(distance);
-            _aimPoint = point; // CAMBIO: lo guardo para que el dardo salga del arma hacia el mouse y no hacia adelante del cuerpo
+            _aimPoint = point;
             Vector3 look = point - transform.position;
             look.y = 0f; // solo gira de costado, que no se incline
             if (look.sqrMagnitude > 0.01f)
@@ -244,14 +268,36 @@ public class PlayerController : Entity
         SetAnimTrigger(ShootHash);
         if (BulletPool.Instance == null) return;
 
+        Transform origin = GetActiveShootPoint();
+
         // CAMBIO: la dirección va desde el punto de disparo hasta el mouse (antes usaba transform.forward
         // y, como el arma está corrida del centro, el dardo salía en diagonal)
-        Vector3 dir = _aimPoint - _shootPoint.position;
+        Vector3 dir = _aimPoint - origin.position;
         dir.y = 0f; // el dardo viaja plano
         if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
 
-        BulletController bc = BulletPool.Instance.Get(_shootPoint.position, Quaternion.LookRotation(dir));
+        BulletController bc = BulletPool.Instance.Get(origin.position, Quaternion.LookRotation(dir));
         bc.Launch(dir, gameObject.tag);
+    }
+
+    // Busco el punto de salida en el arma que esté activa en este momento (quieta o caminando)
+    private Transform GetActiveShootPoint()
+    {
+        GameObject activeWeapon = null;
+        if (_weaponMoving != null && _weaponMoving.activeSelf)
+            activeWeapon = _weaponMoving;
+        else if (_weaponIdle != null && _weaponIdle.activeSelf)
+            activeWeapon = _weaponIdle;
+
+        if (activeWeapon != null)
+        {
+            // Si le puse un hijo "ShootPoint" en la punta del cañón a esa arma, uso ese
+            Transform tip = activeWeapon.transform.Find("ShootPoint");
+            if (tip != null) return tip;
+            return activeWeapon.transform;
+        }
+
+        return _shootPoint != null ? _shootPoint : transform;
     }
 
     // Piso el Die de Entity: el jugador no se destruye, espera un poco y hace respawn
