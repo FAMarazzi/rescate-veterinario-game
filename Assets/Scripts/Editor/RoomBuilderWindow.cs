@@ -73,6 +73,12 @@ public class RoomBuilderWindow : EditorWindow
                 DrawInteriorRoomsTab();
                 break;
         }
+
+        EditorGUILayout.Space(12);
+        if (GUILayout.Button("⚡ Optimizar Clínica en Escena (Subir FPS)", GUILayout.Height(30)))
+        {
+            OptimizeSceneClinic();
+        }
     }
 
     private void DrawFloorTab()
@@ -407,6 +413,37 @@ public class RoomBuilderWindow : EditorWindow
             obj = Instantiate(prefab, pos, rot, parent);
         }
         obj.name = name;
+        obj.isStatic = true; // CAMBIO: marco estático para que Unity agrupe los draw calls (Static Batching)
         Undo.RegisterCreatedObjectUndo(obj, $"Spawn {name}");
+    }
+
+    // Marca como Static todos los pisos y paredes ya generados y apaga sombras innecesarias del piso
+    private void OptimizeSceneClinic()
+    {
+        string[] groupNames = { "Clinica_Piso", "Clinica_Perimetro", "Clinica_SalasInteriores" };
+        int count = 0;
+
+        foreach (string groupName in groupNames)
+        {
+            GameObject group = GameObject.Find(groupName);
+            if (group == null) continue;
+
+            bool isFloor = groupName == "Clinica_Piso";
+            group.isStatic = true;
+
+            foreach (Transform child in group.GetComponentsInChildren<Transform>(true))
+            {
+                child.gameObject.isStatic = true;
+                if (isFloor)
+                {
+                    MeshRenderer mr = child.GetComponent<MeshRenderer>();
+                    if (mr != null)
+                        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                }
+                count++;
+            }
+        }
+
+        EditorUtility.DisplayDialog("Optimización Lista", $"Se optimizaron {count} objetos de la clínica (Static Batching activado + sombras de piso apagadas).", "Genial");
     }
 }
