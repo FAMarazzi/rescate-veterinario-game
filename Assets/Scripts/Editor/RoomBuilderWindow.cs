@@ -2,8 +2,9 @@
  * @Author: Federico Marazzi
  * @Date: 10/30/2026, 11:27:00 AM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 10/30/2026, 11:26:35 AM
- * @Description: Generador completo de niveles: Pisos en matriz, Paredes perimetrales y Habitaciones interiores con puertas.
+ * @LastEditTime: 11/6/2026, 5:28:00 PM
+ * @Description: Generador completo de niveles: Pisos en matriz, Paredes perimetrales, Habitaciones interiores con puertas
+ *   y Decoración automática de cada sala de la clínica (Recepción, Farmacia, Consultorios, Sala de Jaulas y Quirófano).
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
  * @Email: federicoandresmarazzi@gmail.com
  */
@@ -13,7 +14,7 @@ using UnityEngine;
 
 public class RoomBuilderWindow : EditorWindow
 {
-    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores }
+    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores, Decoracion }
     private Tab _currentTab = Tab.Piso;
 
     [Header("Configuración General")]
@@ -25,6 +26,14 @@ public class RoomBuilderWindow : EditorWindow
     private GameObject _tilePrefab;
     private GameObject _wallPrefab;
     private GameObject _doorWallPrefab;
+
+    [Header("Prefabs / Modelos de Decoración")]
+    private GameObject _receptionDeskPrefab;
+    private GameObject _examTablePrefab;
+    private GameObject _medicalCabinetPrefab;
+    private GameObject _medicalCartPrefab;
+    private GameObject _cagePrefab;
+    private float _propScaleMultiplier = 1f;
 
     [Header("Opciones Piso")]
     private bool _randomRotation = true;
@@ -43,12 +52,17 @@ public class RoomBuilderWindow : EditorWindow
         GetWindow<RoomBuilderWindow>("Generador de Nivel");
     }
 
+    private void OnEnable()
+    {
+        AutoFindFurnitureAssets();
+    }
+
     private void OnGUI()
     {
         GUILayout.Label("Generador de Clínica Veterinaria", EditorStyles.boldLabel);
         EditorGUILayout.Space(5);
 
-        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Paredes Exteriores", "3. Salas Interiores" });
+        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Perímetro", "3. Salas", "4. Decoración" });
         EditorGUILayout.Space(10);
 
         // Campos globales compartidos
@@ -71,6 +85,9 @@ public class RoomBuilderWindow : EditorWindow
                 break;
             case Tab.HabitacionesInteriores:
                 DrawInteriorRoomsTab();
+                break;
+            case Tab.Decoracion:
+                DrawDecorationTab();
                 break;
         }
 
@@ -146,6 +163,34 @@ public class RoomBuilderWindow : EditorWindow
             GenerateInteriorRooms();
         }
         EditorGUILayout.EndVertical();
+    }
+
+    private void DrawDecorationTab()
+    {
+        GUILayout.Label("Amoblar y Decorar Clínica Veterinaria", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Ubica automáticamente cada mueble según la lógica de cada sala (Recepción, Farmacia, Consultorios 1 y 2, Sala de Jaulas y Quirófano), les crea sus Materiales + BoxCollider y actualiza el NavMesh.",
+            MessageType.Info);
+
+        EditorGUILayout.Space(5);
+        _receptionDeskPrefab = (GameObject)EditorGUILayout.ObjectField("1. Mostrador Recepción", _receptionDeskPrefab, typeof(GameObject), true);
+        _examTablePrefab = (GameObject)EditorGUILayout.ObjectField("2. Camilla Veterinaria", _examTablePrefab, typeof(GameObject), true);
+        _medicalCabinetPrefab = (GameObject)EditorGUILayout.ObjectField("3. Armario Médico", _medicalCabinetPrefab, typeof(GameObject), true);
+        _medicalCartPrefab = (GameObject)EditorGUILayout.ObjectField("4. Carrito Médico", _medicalCartPrefab, typeof(GameObject), true);
+        _cagePrefab = (GameObject)EditorGUILayout.ObjectField("5. Jaula (Kennel)", _cagePrefab, typeof(GameObject), true);
+        _propScaleMultiplier = EditorGUILayout.Slider("Escala de Muebles", _propScaleMultiplier, 0.5f, 2f);
+
+        EditorGUILayout.Space(8);
+        if (GUILayout.Button("🔍 Auto-Detectar los 5 Modelos en Assets/Models", GUILayout.Height(26)))
+        {
+            AutoFindFurnitureAssets(true);
+        }
+
+        EditorGUILayout.Space(8);
+        if (GUILayout.Button("🛋️ Amoblar Toda la Clínica Automáticamente", GUILayout.Height(38)))
+        {
+            GenerateClinicDecoration();
+        }
     }
 
     // ==========================================
@@ -380,6 +425,200 @@ public class RoomBuilderWindow : EditorWindow
         EditorUtility.DisplayDialog("Éxito", "¡Salas interiores generadas con puertas!", "OK");
     }
 
+    // ==========================================
+    // 4. AMOBLAR Y DECORAR LA CLÍNICA
+    // ==========================================
+    private void AutoFindFurnitureAssets(bool force = false)
+    {
+        if (force || _receptionDeskPrefab == null)
+            _receptionDeskPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/recepcion escritorio/Meshy_AI_vet_reception_desk_3d_20261106_texture.fbx");
+        if (force || _examTablePrefab == null)
+            _examTablePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/camilla examinacion/Meshy_AI_vet_examination_table_3d_20261106_texture.fbx");
+        if (force || _medicalCabinetPrefab == null)
+            _medicalCabinetPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mueble medicinas/Meshy_AI_vet_medical_cabinet_3d_20261106_texture.fbx");
+        if (force || _medicalCartPrefab == null)
+            _medicalCartPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/carrito medico/Meshy_AI_vet_medical_cart_3d_20261106_texture.fbx");
+        if (force || _cagePrefab == null)
+            _cagePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/jaulas low/Meshy_AI_vet_clinic_kennel_60k_1026165409_texture_fbx/Meshy_AI_vet_clinic_kennel_60k_1026165409_texture.fbx");
+    }
+
+    // Me aseguro de que el FBX de Meshy tenga Scale Factor 100 y Bake Axis Conversion activado, y creo su Material URP
+    private Material PrepareFurnitureModel(GameObject modelAsset, string matName)
+    {
+        if (modelAsset == null) return null;
+        string assetPath = AssetDatabase.GetAssetPath(modelAsset);
+        if (string.IsNullOrEmpty(assetPath)) return null;
+
+        ModelImporter importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+        if (importer != null && (importer.globalScale < 90f || !importer.bakeAxisConversion))
+        {
+            importer.globalScale = 100f;
+            importer.bakeAxisConversion = true;
+            importer.SaveAndReimport();
+        }
+
+        string matPath = $"Assets/Materials/{matName}.mat";
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+        if (mat == null)
+        {
+            Shader urpLit = Shader.Find("Universal Render Pipeline/Lit");
+            if (urpLit == null) urpLit = Shader.Find("Standard");
+            mat = new Material(urpLit);
+            mat.enableInstancing = true;
+
+            string texPath = System.IO.Path.ChangeExtension(assetPath, ".png");
+            Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
+            if (tex != null)
+            {
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+
+            AssetDatabase.CreateAsset(mat, matPath);
+        }
+        return mat;
+    }
+
+    private void GenerateClinicDecoration()
+    {
+        AutoFindFurnitureAssets();
+
+        Material matDesk = PrepareFurnitureModel(_receptionDeskPrefab, "Mat_Recepcion");
+        Material matTable = PrepareFurnitureModel(_examTablePrefab, "Mat_Camilla");
+        Material matCabinet = PrepareFurnitureModel(_medicalCabinetPrefab, "Mat_ArmarioMedico");
+        Material matCart = PrepareFurnitureModel(_medicalCartPrefab, "Mat_CarritoMedico");
+        Material matCage = PrepareFurnitureModel(_cagePrefab, "Mat_Jaula");
+        AssetDatabase.SaveAssets();
+
+        GameObject parent = GetOrCreateParent("Clinica_Decoracion");
+        ClearChildren(parent);
+
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+
+        // Convierte coordenada de baldosa (columna, fila) a posición 3D en el mundo
+        Vector3 TilePos(float col, float row)
+        {
+            return new Vector3(startX + (col * _tileSize), 0f, startZ + (row * _tileSize));
+        }
+
+        void SpawnProp(GameObject asset, Material mat, float col, float row, float yaw, float targetSizeMeters, string propName, bool isCage = false)
+        {
+            if (asset == null) return;
+
+            Vector3 pos = TilePos(col, row);
+            Quaternion rot = Quaternion.Euler(0f, yaw, 0f);
+            GameObject obj = (GameObject)PrefabUtility.InstantiatePrefab(asset, parent.transform);
+            obj.name = propName;
+            obj.transform.SetPositionAndRotation(pos, rot);
+            obj.transform.localScale = Vector3.one;
+
+            // Le pongo su material a todos los renderers hijos y calculo el tamaño total para escalarlo prolijo y apoyarlo al piso
+            Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+            if (renderers.Length > 0)
+            {
+                if (mat != null)
+                {
+                    foreach (Renderer r in renderers)
+                        r.sharedMaterial = mat;
+                }
+
+                Bounds bounds = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                    bounds.Encapsulate(renderers[i].bounds);
+
+                float maxHorizontal = Mathf.Max(bounds.size.x, bounds.size.z, bounds.size.y);
+                if (maxHorizontal > 0.0001f)
+                {
+                    float scaleFactor = (targetSizeMeters * _propScaleMultiplier) / maxHorizontal;
+                    obj.transform.localScale = Vector3.one * scaleFactor;
+                }
+
+                // Recalculo bounds después de escalar para apoyar la base justo en Y = 0.02 (arriba de la baldosa)
+                bounds = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                    bounds.Encapsulate(renderers[i].bounds);
+
+                float bottomOffset = obj.transform.position.y - bounds.min.y;
+                obj.transform.position = new Vector3(pos.x, 0.02f + bottomOffset, pos.z);
+
+                // Agrego BoxCollider en el objeto que tiene la malla para que el jugador y el NavMesh lo esquiven
+                MeshFilter mf = obj.GetComponentInChildren<MeshFilter>();
+                if (mf != null && mf.GetComponent<Collider>() == null)
+                    mf.gameObject.AddComponent<BoxCollider>();
+            }
+
+            if (isCage)
+            {
+                if (obj.GetComponent<Cage>() == null)
+                    obj.AddComponent<Cage>();
+            }
+            else
+            {
+                foreach (Transform t in obj.GetComponentsInChildren<Transform>(true))
+                    t.gameObject.isStatic = true;
+            }
+
+            Undo.RegisterCreatedObjectUndo(obj, $"Spawn {propName}");
+        }
+
+        // 1. RECEPCIÓN / ENTRADA (Cols 0..11, Filas 0..7)
+        // Mostrador principal mirando a la entrada Sur y armario de suministros contra la pared
+        SpawnProp(_receptionDeskPrefab, matDesk, 5.5f, 4.5f, 180f, 2.5f, "Recepcion_Mostrador");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.2f, 6.6f, 180f, 1.8f, "Recepcion_Armario");
+        SpawnProp(_medicalCartPrefab, matCart, 10.2f, 6.4f, 270f, 1.15f, "Recepcion_Carrito");
+
+        // 2. FARMACIA / SUMINISTROS (Cols 12..19, Filas 0..7)
+        // Varios armarios médicos contra las paredes y carritos de medicamentos
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.0f, 6.7f, 180f, 1.85f, "Farmacia_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.5f, 6.7f, 180f, 1.85f, "Farmacia_Armario_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 18.6f, 3.5f, 270f, 1.85f, "Farmacia_Armario_3");
+        SpawnProp(_medicalCartPrefab, matCart, 15.5f, 2.5f, 45f, 1.15f, "Farmacia_Carrito_1");
+        SpawnProp(_medicalCartPrefab, matCart, 13.5f, 1.5f, 0f, 1.15f, "Farmacia_Carrito_2");
+
+        // 3. CONSULTORIO 1 (Cols 0..7, Filas 8..13)
+        // Camilla en el centro, carrito al lado y armario médico contra la pared
+        SpawnProp(_examTablePrefab, matTable, 3.5f, 11.0f, 90f, 1.9f, "Consultorio1_Camilla");
+        SpawnProp(_medicalCartPrefab, matCart, 3.5f, 12.6f, 180f, 1.1f, "Consultorio1_Carrito");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.0f, 12.8f, 180f, 1.8f, "Consultorio1_Armario");
+
+        // 4. CONSULTORIO 2 (Cols 0..7, Filas 14..19)
+        // Camilla de revisación, carrito de instrumental, armario y una jaula de observación
+        SpawnProp(_examTablePrefab, matTable, 3.5f, 16.8f, 90f, 1.9f, "Consultorio2_Camilla");
+        SpawnProp(_medicalCartPrefab, matCart, 5.2f, 18.2f, 180f, 1.1f, "Consultorio2_Carrito");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.0f, 18.6f, 180f, 1.8f, "Consultorio2_Armario");
+        SpawnProp(_cagePrefab, matCage, 1.2f, 15.2f, 90f, 1.5f, "Consultorio2_Jaula", true);
+
+        // 5. SALA DE JAULAS / INTERNACIÓN (Cols 12..19, Filas 8..13)
+        // Filas de jaulas (Kennels) para rescatar gatitos y una camilla de internación
+        SpawnProp(_cagePrefab, matCage, 14.5f, 12.7f, 180f, 1.55f, "Internacion_Jaula_1", true);
+        SpawnProp(_cagePrefab, matCage, 17.2f, 12.7f, 180f, 1.55f, "Internacion_Jaula_2", true);
+        SpawnProp(_cagePrefab, matCage, 18.5f, 10.2f, 270f, 1.55f, "Internacion_Jaula_3", true);
+        SpawnProp(_examTablePrefab, matTable, 15.0f, 9.4f, 0f, 1.8f, "Internacion_Camilla");
+        SpawnProp(_medicalCartPrefab, matCart, 13.2f, 12.5f, 180f, 1.1f, "Internacion_Carrito");
+
+        // 6. QUIRÓFANO / SALA DEL JEFE (Cols 12..19, Filas 14..19)
+        // Mesa quirúrgica central, dos carritos de cirugía, armarios al fondo y jaula especial
+        SpawnProp(_examTablePrefab, matTable, 15.8f, 16.8f, 0f, 2.1f, "Quirofano_MesaQuirurgica");
+        SpawnProp(_medicalCartPrefab, matCart, 14.2f, 17.5f, 90f, 1.15f, "Quirofano_Carrito_1");
+        SpawnProp(_medicalCartPrefab, matCart, 17.4f, 17.5f, 270f, 1.15f, "Quirofano_Carrito_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.5f, 18.7f, 180f, 1.85f, "Quirofano_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.2f, 18.7f, 180f, 1.85f, "Quirofano_Armario_2");
+        SpawnProp(_cagePrefab, matCage, 18.5f, 15.2f, 270f, 1.6f, "Quirofano_Jaula", true);
+
+        // Si el piso tiene NavMeshSurface, lo re-horneo automáticamente para que los gatos esquiven los muebles nuevos
+        GameObject piso = GameObject.Find("Clinica_Piso");
+        if (piso != null)
+        {
+            var surface = piso.GetComponent<Unity.AI.Navigation.NavMeshSurface>();
+            if (surface != null)
+                surface.BuildNavMesh();
+        }
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog("Clínica Amoblada", "¡Se decoraron todas las salas de la clínica (Recepción, Farmacia, Consultorios 1 y 2, Sala de Jaulas y Quirófano) y se actualizó el NavMesh!", "¡Excelente!");
+    }
+
     private GameObject GetOrCreateParent(string name)
     {
         GameObject parent = GameObject.Find(name);
@@ -420,7 +659,7 @@ public class RoomBuilderWindow : EditorWindow
     // Marca como Static todos los pisos y paredes ya generados y apaga sombras innecesarias del piso
     private void OptimizeSceneClinic()
     {
-        string[] groupNames = { "Clinica_Piso", "Clinica_Perimetro", "Clinica_SalasInteriores" };
+        string[] groupNames = { "Clinica_Piso", "Clinica_Perimetro", "Clinica_SalasInteriores", "Clinica_Decoracion" };
         int count = 0;
 
         foreach (string groupName in groupNames)
