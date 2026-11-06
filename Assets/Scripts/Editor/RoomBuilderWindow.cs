@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 10/30/2026, 11:27:00 AM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/6/2026, 5:28:00 PM
+ * @LastEditTime: 11/6/2026, 5:33:09 PM
  * @Description: Generador completo de niveles: Pisos en matriz, Paredes perimetrales, Habitaciones interiores con puertas
  *   y Decoración automática de cada sala de la clínica (Recepción, Farmacia, Consultorios, Sala de Jaulas y Quirófano).
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
@@ -34,6 +34,7 @@ public class RoomBuilderWindow : EditorWindow
     private GameObject _medicalCartPrefab;
     private GameObject _cagePrefab;
     private float _propScaleMultiplier = 1f;
+    private Vector3 _propBaseRotation = new Vector3(0f, 0f, 0f);
 
     [Header("Opciones Piso")]
     private bool _randomRotation = true;
@@ -114,7 +115,7 @@ public class RoomBuilderWindow : EditorWindow
     private void DrawPerimeterTab()
     {
         GUILayout.Label("Paredes Exteriores (Perímetro 4 lados)", EditorStyles.boldLabel);
-        _wallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
+        _wallPrefab = (GameObject)EditorGUILayout.ahObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
         _doorWallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Pared con Puerta (Opcional)", _doorWallPrefab, typeof(GameObject), true);
         _addPerimeterDoors = EditorGUILayout.Toggle("Incluir Puertas en Perímetro", _addPerimeterDoors);
         if (_addPerimeterDoors)
@@ -179,6 +180,7 @@ public class RoomBuilderWindow : EditorWindow
         _medicalCartPrefab = (GameObject)EditorGUILayout.ObjectField("4. Carrito Médico", _medicalCartPrefab, typeof(GameObject), true);
         _cagePrefab = (GameObject)EditorGUILayout.ObjectField("5. Jaula (Kennel)", _cagePrefab, typeof(GameObject), true);
         _propScaleMultiplier = EditorGUILayout.Slider("Escala de Muebles", _propScaleMultiplier, 0.5f, 2f);
+        _propBaseRotation = EditorGUILayout.Vector3Field("Rotación Base (X, Y, Z)", _propBaseRotation);
 
         EditorGUILayout.Space(8);
         if (GUILayout.Button("🔍 Auto-Detectar los 5 Modelos en Assets/Models", GUILayout.Height(26)))
@@ -450,10 +452,11 @@ public class RoomBuilderWindow : EditorWindow
         if (string.IsNullOrEmpty(assetPath)) return null;
 
         ModelImporter importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
-        if (importer != null && (importer.globalScale < 90f || !importer.bakeAxisConversion))
+        // Desactivo bakeAxisConversion porque en estos modelos de Meshy los invierte de cabeza
+        if (importer != null && (importer.globalScale < 90f || importer.bakeAxisConversion))
         {
             importer.globalScale = 100f;
-            importer.bakeAxisConversion = true;
+            importer.bakeAxisConversion = false;
             importer.SaveAndReimport();
         }
 
@@ -507,7 +510,7 @@ public class RoomBuilderWindow : EditorWindow
             if (asset == null) return;
 
             Vector3 pos = TilePos(col, row);
-            Quaternion rot = Quaternion.Euler(0f, yaw, 0f);
+            Quaternion rot = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(_propBaseRotation);
             GameObject obj = (GameObject)PrefabUtility.InstantiatePrefab(asset, parent.transform);
             obj.name = propName;
             obj.transform.SetPositionAndRotation(pos, rot);

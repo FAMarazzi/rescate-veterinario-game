@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/5/2026, 11:39:00 AM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/6/2026, 4:43:48 PM
+ * @LastEditTime: 11/6/2026, 5:32:04 PM
  * @Description: Clase base abstracta para todos los enemigos (gatos, perros, jefe).
  *   Hereda de Entity y maneja la máquina de estados (Idle, Chase, Attack, Dead) con NavMeshAgent.
  *   Cada enemigo hijo define su propio PerformAttack() (polimorfismo: melee o rango).
