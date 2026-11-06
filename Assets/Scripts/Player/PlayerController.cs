@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 1:06:19 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/5/2026, 5:25:25 PM
+ * @LastEditTime: 11/6/2026, 2:03:50 PM
  * @Description: El veterinario jugable. Lo traje del PlayerController del proyecto anterior.
  *   CAMBIOS: saqué todo lo del barco (olas, bamboleo, cañones). Ahora uso el Input System nuevo
  *   (WASD y mouse), miro hacia el mouse, click izquierdo es melee con empuje y click derecho
@@ -43,6 +43,9 @@ public class PlayerController : Entity
     [SerializeField] private Animator _animator; // si lo dejo vacío lo busco en el modelo hijo
     [SerializeField] private float _animDamp = 0.1f; // suaviza el cambio entre quieto, caminar y correr
 
+    [Header("Interacción (tecla E)")]
+    [SerializeField] private float _interactRange = 2.6f;
+
     [Header("Respawn")]
     [SerializeField] private Transform _spawnPoint;
     [SerializeField] private float _respawnDelay = 2f; // CAMBIO: nuevo, antes aparecía la pantalla de derrota directo
@@ -55,6 +58,7 @@ public class PlayerController : Entity
     private bool _controlEnabled = true;
     private bool _isAiming; // true mientras mantengo el click derecho
     private Vector3 _aimPoint; // el punto del piso donde está el mouse, el dardo va hacia ahí
+    private float _groundY; // me guardo la altura inicial del piso para que al respawnear no quede flotando
 
     // Hasheo los nombres de los parámetros del Animator (es más rápido que usar strings)
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
@@ -65,8 +69,10 @@ public class PlayerController : Entity
     protected override void Awake()
     {
         base.Awake();
+        _groundY = transform.position.y;
         _rb = GetComponent<Rigidbody>();
-        _rb.constraints = RigidbodyConstraints.FreezeRotation; // que el jugador no se caiga ni se dé vuelta
+        // Congelo rotación y también la altura (Y) para que al chocar contra cápsulas de enemigos no salga volando por el aire
+        _rb.constraints = RigidbodyConstraints.FreezeRotation | RigidbodyConstraints.FreezePositionY;
         _cam = Camera.main;
         if (_shootPoint == null) _shootPoint = transform; // si no puse punto de disparo, salen desde el centro
         if (_animator == null) _animator = GetComponentInChildren<Animator>();
@@ -87,6 +93,34 @@ public class PlayerController : Entity
         UpdateWeaponVisibility();
 
         HandleAttacks();
+        HandleInteraction();
+    }
+
+    // Con la tecla E abro jaulas o puertas que tenga cerca
+    private void HandleInteraction()
+    {
+        if (Keyboard.current == null || !Keyboard.current.eKey.wasPressedThisFrame) return;
+
+        Collider[] hits = Physics.OverlapSphere(transform.position, _interactRange);
+        IInteractable closest = null;
+        float minDist = float.MaxValue;
+
+        foreach (Collider hit in hits)
+        {
+            IInteractable interactable = hit.GetComponentInParent<IInteractable>();
+            if (interactable != null)
+            {
+                float d = Vector3.Distance(transform.position, hit.transform.position);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    closest = interactable;
+                }
+            }
+        }
+
+        if (closest != null)
+            closest.Interact(this);
     }
 
     // Muestro el arma solo mientras apunto; si puse dos posiciones distintas (quieta vs caminando), alterna sola
@@ -320,8 +354,10 @@ public class PlayerController : Entity
         ResetHealth();
         _currentVelocity = Vector3.zero;
 
-        // Lo mando al punto de spawn (si me olvidé de ponerlo, al origen)
-        transform.position = _spawnPoint != null ? _spawnPoint.position : Vector3.zero;
+        // Lo mando al punto de spawn pero respetando la Y del piso por si el SpawnPoint quedó alto en la escena
+        Vector3 spawnPos = _spawnPoint != null ? _spawnPoint.position : Vector3.zero;
+        spawnPos.y = _groundY;
+        transform.position = spawnPos;
         _controlEnabled = true;
     }
 }
