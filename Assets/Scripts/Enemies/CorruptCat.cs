@@ -15,7 +15,7 @@ using UnityEngine;
 public class CorruptCat : Enemy
 {
     [Header("Gato Corrupto (Melee)")]
-    [SerializeField] private float _moveSpeed = 5.5f;     // es más rápido que otros enemigos
+    [SerializeField] private float _moveSpeed = 4.2f;     // velocidad equilibrada para poder pelear adentro de las salas
     [SerializeField] private float _lungeDistance = 0.4f; // pequeño salto hacia adelante al pegar
     [SerializeField] private float _lungeDuration = 0.12f;
     [SerializeField] private Transform _modelTransform;   // hijo visual para animar el zarpazo sin mover el collider
@@ -24,11 +24,12 @@ public class CorruptCat : Enemy
 
     protected override void Awake()
     {
-        // Valores por defecto pensados para un enemigo rápido cuerpo a cuerpo
-        _maxHealth = 60f;
-        _attackDamage = 15f;
-        _attackRange = 1.7f;
-        _attackCooldown = 0.9f;
+        // Valores por defecto: si en el Inspector no le puse otra vida/daño, arranca con 50 HP (2 dardos)
+        if (_maxHealth <= 0f || Mathf.Approximately(_maxHealth, 100f)) _maxHealth = 50f;
+        if (_attackDamage <= 0f) _attackDamage = 12f;
+        if (_attackRange <= 0f) _attackRange = 1.6f;
+        if (_attackCooldown <= 0f) _attackCooldown = 1.0f;
+        _baseMoveSpeed = _moveSpeed;
 
         base.Awake();
 

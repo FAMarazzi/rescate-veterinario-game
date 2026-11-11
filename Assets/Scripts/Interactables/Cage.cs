@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/6/2026, 4:49:30 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/11/2026, 11:24:12 AM
+ * @LastEditTime: 11/11/2026, 5:13:00 PM
  * @Description: Jaula de la veterinaria donde están encerrados los gatitos aliados (como Cuti y Dibu).
  *   Cuando me acerco y toco la E, se abre y el gatito que estaba adentro activa su script Ally
  *   (o se instancia su prefab) para seguirme y ayudarme a pelear contra los gatos corruptos.
@@ -10,25 +10,33 @@
  * @Email: federicoandresmarazzi@gmail.com
  */
 
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
 public class Cage : MonoBehaviour, IInteractable
 {
+    public static event Action<Cage> OnCageOpened;
+
     [Header("Gatito Encerrado")]
-    [Tooltip("Si ya puse al gatito adentro de la jaula en la escena, lo arrastro acá")]
+    [Tooltip("Si ya puse a Dibu o Cuti adentro de la jaula en la escena, lo arrastro acá")]
     [SerializeField] private Ally _cagedAllyInScene;
-    [Tooltip("O si prefiero que lo instancie de cero al abrirse, pongo el Prefab de Cuti o Dibu acá")]
+    [Tooltip("O si prefiero que instancie a Dibu o Cuti de cero al abrirse, pongo su Prefab acá")]
     [SerializeField] private GameObject _allyPrefabToSpawn;
+    [Tooltip("Prefab del gatito genérico que sale corriendo a la puerta cuando la jaula no tiene a Dibu ni Cuti")]
+    [SerializeField] private GameObject _rescuedKittenPrefab;
     [SerializeField] private Transform _spawnPoint; // punto adelante de la jaula donde sale el gatito
 
     [Header("Feedback Visual")]
     [SerializeField] private string _promptMessage = "[E] Liberar gatito";
     [SerializeField] private float _promptShowDistance = 2.8f;
 
+    public bool IsOpen => _isOpen;
+
     private bool _isOpen = false;
     private Transform _player;
+    private Vector3 _clinicExitPos;
     private GameObject _promptObj;
 
     private void Awake()
@@ -53,14 +61,33 @@ public class Cage : MonoBehaviour, IInteractable
     private void Start()
     {
         PlayerController pc = FindFirstObjectByType<PlayerController>();
-        if (pc != null) _player = pc.transform;
+        if (pc != null)
+        {
+            _player = pc.transform;
+            _clinicExitPos = pc.transform.position; // me guardo la entrada donde arrancó la veterinaria como punto de escape
+        }
+
+        // Si en el Inspector no cambié el cartel por defecto y adentro están Dibu o Cuti, pongo su nombre real
+        if (_promptMessage == "[E] Liberar gatito")
+        {
+            string allyName = _cagedAllyInScene != null ? _cagedAllyInScene.name : (_allyPrefabToSpawn != null ? _allyPrefabToSpawn.name : "");
+            if (!string.IsNullOrEmpty(allyName))
+            {
+                _promptMessage = $"[E] Liberar a {allyName}";
+                if (_promptObj != null)
+                {
+                    TextMesh tm = _promptObj.GetComponent<TextMesh>();
+                    if (tm != null) tm.text = _promptMessage;
+                }
+            }
+        }
     }
 
     private void Update()
     {
         if (_isOpen || _promptObj == null || _player == null) return;
 
-        // Muestro el cartelito "[E] Liberar gatito" solo cuando estoy cerca de la jaula
+        // Muestro el cartelito "[E] Liberar gatito" (o Dibu/Cuti) cuando estoy cerca de la jaula
         float dist = Vector3.Distance(transform.position, _player.position);
         bool near = dist <= _promptShowDistance;
         if (_promptObj.activeSelf != near)
@@ -106,8 +133,45 @@ public class Cage : MonoBehaviour, IInteractable
         {
             Instantiate(_allyPrefabToSpawn, exitPos, Quaternion.identity);
         }
+        else
+        {
+            // Es una jaula común: sale un gatito sano corriendo hacia la puerta de salida de la clínica
+            SpawnRunningKitten(exitPos);
+        }
 
+        OnCageOpened?.Invoke(this);
         StartCoroutine(OpenFeedbackRoutine());
+    }
+
+    private void SpawnRunningKitten(Vector3 spawnPos)
+    {
+        GameObject prefab = _rescuedKittenPrefab;
+
+        // Si no asigné un prefab a mano en el Inspector, busco el modelo de un gato de la escena para clonar su parte visual sana
+        if (prefab == null)
+        {
+            Enemy anyCat = FindFirstObjectByType<Enemy>();
+            if (anyCat != null) prefab = anyCat.gameObject;
+        }
+
+        if (prefab == null) return;
+
+        spawnPos.y = 0.02f;
+        GameObject kitten = Instantiate(prefab, spawnPos, Quaternion.identity);
+        kitten.name = "GatitoRescatado";
+        kitten.transform.localScale = Vector3.one * 0.85f; // un cachito más chiquito que los corruptos
+
+        // Le pongo color blanco/natural al material para que se vea sano (sin el tinte violeta de corrupto)
+        foreach (Renderer r in kitten.GetComponentsInChildren<Renderer>())
+        {
+            if (r == null) continue;
+            Material mat = r.material;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+            else if (mat.HasProperty("_Color")) mat.color = Color.white;
+        }
+
+        RescuedKitten runner = kitten.AddComponent<RescuedKitten>();
+        runner.RunToExit(_clinicExitPos);
     }
 
     // Pequeño rebote y achique de la jaula para que se note que ya quedó abierta/vacía

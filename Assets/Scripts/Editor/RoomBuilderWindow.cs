@@ -14,7 +14,7 @@ using UnityEngine;
 
 public class RoomBuilderWindow : EditorWindow
 {
-    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores, Decoracion }
+    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores, Decoracion, Enemigos }
     private Tab _currentTab = Tab.Piso;
 
     [Header("Configuración General")]
@@ -33,6 +33,7 @@ public class RoomBuilderWindow : EditorWindow
     private GameObject _medicalCabinetPrefab;
     private GameObject _medicalCartPrefab;
     private GameObject _cagePrefab;
+    private GameObject _corruptCatPrefab;
 
     // Alturas en metros pensadas respecto a las paredes de la clínica (~2.1m) y la veterinaria (~1.6m)
     private float _deskHeight = 1.25f;
@@ -70,7 +71,7 @@ public class RoomBuilderWindow : EditorWindow
         GUILayout.Label("Generador de Clínica Veterinaria", EditorStyles.boldLabel);
         EditorGUILayout.Space(5);
 
-        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Perímetro", "3. Salas", "4. Decoración" });
+        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Perímetro", "3. Salas", "4. Decoración", "5. Enemigos" });
         EditorGUILayout.Space(10);
 
         // Campos globales compartidos
@@ -96,6 +97,9 @@ public class RoomBuilderWindow : EditorWindow
                 break;
             case Tab.Decoracion:
                 DrawDecorationTab();
+                break;
+            case Tab.Enemigos:
+                DrawEnemiesTab();
                 break;
         }
 
@@ -461,6 +465,122 @@ public class RoomBuilderWindow : EditorWindow
             _medicalCartPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/carrito medico/Meshy_AI_vet_medical_cart_3d_20261106_texture.fbx");
         if (force || _cagePrefab == null)
             _cagePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/jaulas low/Meshy_AI_vet_clinic_kennel_60k_1026165409_texture_fbx/Meshy_AI_vet_clinic_kennel_60k_1026165409_texture.fbx");
+        if (force || _corruptCatPrefab == null)
+            _corruptCatPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/GatoCorrupto.prefab");
+    }
+
+    private void DrawEnemiesTab()
+    {
+        GUILayout.Label("Poblar Salas con Gatos Corruptos (Dificultad Progresiva)", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Genera los gatos corruptos sala por sala con dificultad creciente (sin tocar tus muebles):\n" +
+            "• Sala 1 (Recepción): 1 gato inicial (50 HP)\n" +
+            "• Sala 2 (Farmacia): 2 gatos (50 HP)\n" +
+            "• Sala 3 (Consultorio 1): 3 gatos (50 HP)\n" +
+            "• Sala 4 (Consultorio 2): 3 gatos más resistentes (75 HP)\n" +
+            "• Sala 5 (Internación / Jaulas): 4 gatos bravos (75 HP)\n" +
+            "• Sala 6 (Quirófano): 1 Gato Jefe Gigante (250 HP) + 2 escoltas",
+            MessageType.Info);
+
+        EditorGUILayout.Space(5);
+        _corruptCatPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Gato Corrupto", _corruptCatPrefab, typeof(GameObject), false);
+
+        EditorGUILayout.Space(10);
+        if (GUILayout.Button("🐱 Generar Gatos por Habitación (Dificultad Progresiva)", GUILayout.Height(38)))
+        {
+            GenerateProgressiveEnemies();
+        }
+
+        EditorGUILayout.Space(8);
+        if (GUILayout.Button("💊 Activar Botiquines en los Armarios Médicos de la Escena", GUILayout.Height(32)))
+        {
+            SetupMedicineCabinetsInScene();
+        }
+    }
+
+    private void SetupMedicineCabinetsInScene()
+    {
+        int count = 0;
+        foreach (GameObject go in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+        {
+            if (go.name.Contains("Armario") && go.GetComponent<MedicineCabinet>() == null && go.transform.parent != null && go.transform.parent.name == "Clinica_Decoracion")
+            {
+                Undo.AddComponent<MedicineCabinet>(go);
+                count++;
+            }
+        }
+        EditorUtility.DisplayDialog("Armarios Listos", $"Se activaron {count} armarios médicos en la clínica para poder sacar botiquines con la tecla E.", "Genial");
+    }
+
+    private void GenerateProgressiveEnemies()
+    {
+        AutoFindFurnitureAssets();
+        if (_corruptCatPrefab == null)
+        {
+            EditorUtility.DisplayDialog("Error", "No se encontró Assets/Prefabs/GatoCorrupto.prefab.", "OK");
+            return;
+        }
+
+        GameObject parent = GetOrCreateParent("Clinica_Enemigos");
+        ClearChildren(parent);
+
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+
+        Vector3 TilePos(float col, float row)
+        {
+            return new Vector3(startX + (col * _tileSize), 0.02f, startZ + (row * _tileSize));
+        }
+
+        void SpawnCat(float col, float row, float yaw, float hp, float dmg, float speed, float scaleMult, string catName)
+        {
+            Vector3 pos = TilePos(col, row);
+            Quaternion rot = Quaternion.Euler(0f, yaw, 0f);
+            GameObject obj = (GameObject)PrefabUtility.InstantiatePrefab(_corruptCatPrefab, parent.transform);
+            obj.name = catName;
+            obj.transform.SetPositionAndRotation(pos, rot);
+            obj.transform.localScale = Vector3.one * scaleMult;
+
+            Enemy enemy = obj.GetComponent<Enemy>();
+            if (enemy != null)
+            {
+                enemy.ConfigureStats(hp, dmg, speed, 7.2f);
+                EditorUtility.SetDirty(enemy);
+            }
+
+            Undo.RegisterCreatedObjectUndo(obj, $"Spawn {catName}");
+        }
+
+        // 1. RECEPCIÓN (Nivel 1: 1 gato tranquilo cerca de la puerta al pasillo)
+        SpawnCat(7.5f, 5.5f, 200f, 50f, 10f, 3.8f, 1f, "Recepcion_Gato_1");
+
+        // 2. FARMACIA (Nivel 2: 2 gatos cuidando los suministros)
+        SpawnCat(14.5f, 2.5f, 270f, 50f, 12f, 4.0f, 1f, "Farmacia_Gato_1");
+        SpawnCat(16.8f, 5.2f, 210f, 50f, 12f, 4.0f, 1f, "Farmacia_Gato_2");
+
+        // 3. CONSULTORIO 1 (Nivel 3: 3 gatos)
+        SpawnCat(5.0f, 9.5f, 90f, 50f, 12f, 4.1f, 1f, "Consultorio1_Gato_1");
+        SpawnCat(2.2f, 10.2f, 110f, 50f, 12f, 4.1f, 1f, "Consultorio1_Gato_2");
+        SpawnCat(4.5f, 12.0f, 140f, 50f, 12f, 4.2f, 1f, "Consultorio1_Gato_3");
+
+        // 4. CONSULTORIO 2 (Nivel 4: 3 gatos más duros, 3 dardos c/u)
+        SpawnCat(5.2f, 15.5f, 90f, 75f, 14f, 4.2f, 1.1f, "Consultorio2_Gato_1");
+        SpawnCat(2.2f, 16.0f, 100f, 75f, 14f, 4.2f, 1.1f, "Consultorio2_Gato_2");
+        SpawnCat(3.8f, 18.0f, 150f, 75f, 14f, 4.3f, 1.1f, "Consultorio2_Gato_3");
+
+        // 5. SALA DE JAULAS / INTERNACIÓN (Nivel 5: 4 gatos custodiando las jaulas)
+        SpawnCat(14.0f, 10.5f, 270f, 75f, 14f, 4.2f, 1.1f, "Internacion_Gato_1");
+        SpawnCat(16.5f, 9.8f, 280f, 75f, 14f, 4.3f, 1.1f, "Internacion_Gato_2");
+        SpawnCat(15.5f, 11.8f, 240f, 75f, 15f, 4.3f, 1.1f, "Internacion_Gato_3");
+        SpawnCat(17.5f, 11.5f, 250f, 75f, 15f, 4.4f, 1.15f, "Internacion_Gato_4");
+
+        // 6. QUIRÓFANO / SALA DEL JEFE (Nivel 6: Gato Jefe Gigante + 2 escoltas)
+        SpawnCat(16.0f, 16.2f, 240f, 250f, 25f, 3.9f, 1.85f, "Quirofano_GatoJefe");
+        SpawnCat(13.8f, 15.5f, 260f, 75f, 15f, 4.3f, 1.1f, "Quirofano_Escolta_1");
+        SpawnCat(16.8f, 18.0f, 220f, 75f, 15f, 4.3f, 1.1f, "Quirofano_Escolta_2");
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog("Enemigos Generados", "¡Se poblaron las 6 salas con 16 gatos corruptos en dificultad progresiva (incluyendo el Gato Jefe en el Quirófano)!", "¡A jugar!");
     }
 
     // Me aseguro de que el FBX de Meshy tenga Scale Factor 100 y Bake Axis Conversion activado, y creo su Material URP

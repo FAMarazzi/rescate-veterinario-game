@@ -120,17 +120,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2caea23dcfd24a04488c0e406b919198, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CorruptCat
-  _maxHealth: 60
-  _detectionRange: 12
-  _attackRange: 1.7
-  _loseSightRange: 18
-  _attackDamage: 15
-  _attackCooldown: 0.9
+  _maxHealth: 50
+  _detectionRange: 7.5
+  _attackRange: 1.6
+  _loseSightRange: 14
+  _attackDamage: 12
+  _attackCooldown: 1
   _corruptTint: {r: 0.65, g: 0.25, b: 0.9, a: 1}
   _damageFlashColor: {r: 1, g: 0, b: 0, a: 1}
   _flashDuration: 0.15
   _joinAsAllyWhenCured: 0
-  _moveSpeed: 4.25
+  _moveSpeed: 4.2
   _lungeDistance: 0.4
   _lungeDuration: 0.12
   _modelTransform: {fileID: 8685322720242624839}

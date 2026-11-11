@@ -8,11 +8,11 @@ Entrega: **18/11/2026 23:59**. Arranqué el 26/10. Voy de menos a más: commit t
 - [x] Top view 45°, jugador se mueve libre (día 1)
 - [x] Melee + Ranged (dardos con pool) (día 1)
 - [x] Recibir / ocasionar daño, eliminar enemigos (`CorruptCat` con dardos/melee, se duerme con `Zzz`)
-- [ ] Recolectar y usar ítems (botiquín, antídoto)
-- [ ] Interactuar con el escenario (jaulas, puertas, palancas) (`IInteractable` y `Cage` listos en código, falta armar prefabs en escena)
-- [ ] Feedback / notificaciones en pantalla
-- [ ] Ganar, perder, respawn / reiniciar (respawn listo, falta condición de victoria/derrota)
-- [x] Enemigos: detectar → acercarse → atacar → recibir daño → morir
+- [x] Recolectar y usar ítems (sacar botiquines con `E` de los armarios `MedicineCabinet` y usarlos con `Q`)
+- [x] Interactuar con el escenario (`IInteractable`: jaulas `Cage` y armarios médicos `MedicineCabinet`)
+- [ ] Feedback / notificaciones en pantalla y barras de vida
+- [ ] Ganar, perder, respawn / reiniciar (sistema de 3 vidas + respawn en `PlayerController` listo; falta `GameManager` con pantalla de Victoria / Derrota y Reiniciar)
+- [x] Enemigos: detectar → acercarse → atacar → recibir daño → morir (con dificultad progresiva por sala y línea de visión)
 - [ ] Escena de título: Play, Créditos, Opciones (volumen), Exit
 - [ ] Música de fondo + efectos + feedback sonoro, volumen en Opciones
 - [ ] 3+ minutos de gameplay efectivo

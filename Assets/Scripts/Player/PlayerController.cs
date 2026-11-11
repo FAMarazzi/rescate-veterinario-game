@@ -11,6 +11,7 @@
  * @Email: federicoandresmarazzi@gmail.com
  */
 
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -24,17 +25,17 @@ public class PlayerController : Entity
     [SerializeField] private float _drag = 8f; // qué tan rápido frena la inercia cuando suelto las teclas
     [SerializeField] private float _turnSpeed = 15f; // qué tan rápido gira el cuerpo hacia donde camina
 
-    [Header("Melee (click izquierdo)")]
+    [Header("Melee (click izquierdo o barra espaciadora)")]
     [SerializeField] private float _meleeDamage = 20f;
-    [SerializeField] private float _meleeRange = 1.8f;
-    [SerializeField] private float _meleeAngle = 100f;     // qué tan ancho es el golpe, en grados
+    [SerializeField] private float _meleeRange = 2.2f;
+    [SerializeField] private float _meleeAngle = 140f;     // qué tan ancho es el golpe, en grados
     [SerializeField] private float _meleePushForce = 8f;   // cuánto empujo al enemigo
     [SerializeField] private float _meleeCooldown = 0.5f;
 
     [Header("Dardos (apuntar con click derecho, disparar con click izquierdo)")]
     [SerializeField] private Transform _shootPoint;
-    [SerializeField] private float _shootCooldown = 0.8f;
-    [SerializeField] private float _aimSpeedMultiplier = 0.6f; // camino más lento mientras apunto
+    [SerializeField] private float _shootCooldown = 0.45f;
+    [SerializeField] private float _aimSpeedMultiplier = 0.72f; // camino más lento mientras apunto
     [SerializeField] private float _aimYawOffset = 0f; // grados que giro el cuerpo al apuntar para que el arma de la animación quede sobre el mouse (probar con valores + y -)
     [SerializeField] private GameObject _weaponIdle;   // arma ubicada para cuando apunta quieta (se oculta sola si no apunto)
     [SerializeField] private GameObject _weaponMoving; // opcional: otra copia del arma ubicada para cuando apunta caminando
@@ -43,12 +44,25 @@ public class PlayerController : Entity
     [SerializeField] private Animator _animator; // si lo dejo vacío lo busco en el modelo hijo
     [SerializeField] private float _animDamp = 0.1f; // suaviza el cambio entre quieto, caminar y correr
 
-    [Header("Interacción (tecla E)")]
+    [Header("Interacción y Botiquines (E para interactuar, Q para curarse)")]
     [SerializeField] private float _interactRange = 2.6f;
+    [SerializeField] private int _medkits = 1; // arranco con 1 botiquín de emergencia en la mochila
+    [SerializeField] private float _medkitHealAmount = 45f;
 
-    [Header("Respawn")]
+    [Header("Vidas y Respawn")]
+    [SerializeField] private int _maxLives = 3;
     [SerializeField] private Transform _spawnPoint;
     [SerializeField] private float _respawnDelay = 2f; // CAMBIO: nuevo, antes aparecía la pantalla de derrota directo
+
+    public int CurrentLives => _currentLives;
+    public int MaxLives => _maxLives;
+    public int Medkits => _medkits;
+
+    public event Action<int, int> OnLivesChanged;
+    public event Action<int> OnMedkitsChanged;
+    public event Action OnOutOfLives; // avisa al GameManager cuando pierdo las 3 vidas
+
+    private int _currentLives;
 
     private Rigidbody _rb;
     private Camera _cam;
@@ -69,6 +83,7 @@ public class PlayerController : Entity
     protected override void Awake()
     {
         base.Awake();
+        _currentLives = _maxLives;
         _groundY = transform.position.y;
         _rb = GetComponent<Rigidbody>();
         // Congelo rotación y también la altura (Y) para que al chocar contra cápsulas de enemigos no salga volando por el aire
@@ -96,10 +111,18 @@ public class PlayerController : Entity
         HandleInteraction();
     }
 
-    // Con la tecla E abro jaulas o puertas que tenga cerca
+    // Con la tecla E abro jaulas o saco botiquines de los armarios, y con la Q uso un botiquín para curarme
     private void HandleInteraction()
     {
-        if (Keyboard.current == null || !Keyboard.current.eKey.wasPressedThisFrame) return;
+        if (Keyboard.current == null) return;
+
+        // Tecla Q: utilizar un botiquín guardado si me falta vida
+        if (Keyboard.current.qKey.wasPressedThisFrame)
+        {
+            TryUseMedkit();
+        }
+
+        if (!Keyboard.current.eKey.wasPressedThisFrame) return;
 
         Collider[] hits = Physics.OverlapSphere(transform.position, _interactRange);
         IInteractable closest = null;
@@ -121,6 +144,22 @@ public class PlayerController : Entity
 
         if (closest != null)
             closest.Interact(this);
+    }
+
+    public void AddMedkit(int count = 1)
+    {
+        _medkits += count;
+        OnMedkitsChanged?.Invoke(_medkits);
+    }
+
+    public bool TryUseMedkit()
+    {
+        if (_medkits <= 0 || _isDead || _currentHealth >= _maxHealth) return false;
+
+        _medkits--;
+        Heal(_medkitHealAmount);
+        OnMedkitsChanged?.Invoke(_medkits);
+        return true;
     }
 
     // Muestro el arma solo mientras apunto; si puse dos posiciones distintas (quieta vs caminando), alterna sola
@@ -247,6 +286,17 @@ public class PlayerController : Entity
         if (_shootTimer > 0f) _shootTimer -= Time.deltaTime;
 
         Mouse mouse = Mouse.current;
+        Keyboard kb = Keyboard.current;
+
+        // Barra espaciadora: empujón rápido en cualquier momento (incluso mientras apunto) para sacarme gatos de encima
+        if (kb != null && kb.spaceKey.wasPressedThisFrame && _meleeTimer <= 0f)
+        {
+            if (!_isAiming) AimAtMouse();
+            MeleeAttack();
+            _meleeTimer = _meleeCooldown;
+            return;
+        }
+
         if (mouse == null) return;
 
         // Click izquierdo: si estoy apuntando disparo el dardo, si no pego con el melee
@@ -275,6 +325,12 @@ public class PlayerController : Entity
         SetAnimTrigger(MeleeHash);
         Collider[] hits = Physics.OverlapSphere(transform.position, _meleeRange);
 
+        // Uso la dirección hacia el mouse para que el cono de golpe coincida con donde miro aunque tenga _aimYawOffset
+        Vector3 forwardDir = (_aimPoint - transform.position);
+        forwardDir.y = 0f;
+        if (forwardDir.sqrMagnitude < 0.01f) forwardDir = transform.forward;
+        forwardDir.Normalize();
+
         foreach (Collider hit in hits)
         {
             // No se golpea a sí mismo ni a los de su mismo bando
@@ -283,16 +339,24 @@ public class PlayerController : Entity
             // Solo cuenta si está dentro del ángulo del golpe (adelante mío)
             Vector3 toTarget = hit.transform.position - transform.position;
             toTarget.y = 0f;
-            if (Vector3.Angle(transform.forward, toTarget) > _meleeAngle * 0.5f) continue;
+            if (Vector3.Angle(forwardDir, toTarget) > _meleeAngle * 0.5f) continue;
 
             IDamageable damageable = hit.GetComponentInParent<IDamageable>();
             if (damageable != null)
                 damageable.TakeDamage(_meleeDamage);
 
-            // Lo empujo solo si tiene Rigidbody y no es kinemático, si no la fuerza no hace nada
-            Rigidbody targetRb = hit.attachedRigidbody;
-            if (targetRb != null && !targetRb.isKinematic)
-                targetRb.AddForce(toTarget.normalized * _meleePushForce, ForceMode.Impulse);
+            // Si es un Enemy con NavMeshAgent, uso ApplyKnockback para pausarle el agente y correrlo hacia atrás de verdad
+            Enemy enemy = hit.GetComponentInParent<Enemy>();
+            if (enemy != null)
+            {
+                enemy.ApplyKnockback(toTarget.normalized, 2.6f, 0.55f);
+            }
+            else
+            {
+                Rigidbody targetRb = hit.attachedRigidbody;
+                if (targetRb != null && !targetRb.isKinematic)
+                    targetRb.AddForce(toTarget.normalized * _meleePushForce, ForceMode.Impulse);
+            }
         }
     }
 
@@ -310,7 +374,26 @@ public class PlayerController : Entity
         dir.y = 0f; // el dardo viaja plano
         if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
 
-        BulletController bc = BulletPool.Instance.Get(origin.position, Quaternion.LookRotation(dir));
+        // Si un gato ya se me metió recontra encima (más cerca que la punta del cañón), hago que el dardo nazca un cachito más atrás así le pega igual a quemarropa
+        Vector3 spawnPos = origin.position;
+        Collider[] closeHits = Physics.OverlapSphere(transform.position + Vector3.up * 0.8f, 1.35f);
+        foreach (Collider c in closeHits)
+        {
+            Enemy closeEnemy = c.GetComponentInParent<Enemy>();
+            if (closeEnemy != null && !closeEnemy.IsDead)
+            {
+                Vector3 toEnemy = closeEnemy.transform.position - transform.position;
+                toEnemy.y = 0f;
+                if (Vector3.Angle(dir, toEnemy) < 55f)
+                {
+                    dir = toEnemy.normalized;
+                    spawnPos = new Vector3(transform.position.x, origin.position.y, transform.position.z);
+                    break;
+                }
+            }
+        }
+
+        BulletController bc = BulletPool.Instance.Get(spawnPos, Quaternion.LookRotation(dir));
         bc.Launch(dir, gameObject.tag);
     }
 
@@ -334,12 +417,21 @@ public class PlayerController : Entity
         return _shootPoint != null ? _shootPoint : transform;
     }
 
-    // Piso el Die de Entity: el jugador no se destruye, espera un poco y hace respawn
+    // Piso el Die de Entity: descuento 1 vida; si me quedan vidas hago respawn, si llegué a 0 aviso derrota
     protected override void Die()
     {
-        Debug.Log("Jugador muerto");
         _controlEnabled = false;
-        StartCoroutine(RespawnAfterDelay());
+        _currentLives = Mathf.Max(0, _currentLives - 1);
+        OnLivesChanged?.Invoke(_currentLives, _maxLives);
+
+        if (_currentLives > 0)
+        {
+            StartCoroutine(RespawnAfterDelay());
+        }
+        else
+        {
+            OnOutOfLives?.Invoke();
+        }
     }
 
     private IEnumerator RespawnAfterDelay()

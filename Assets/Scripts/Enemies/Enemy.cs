@@ -22,13 +22,17 @@ public abstract class Enemy : Entity
     protected enum State { Idle, Chase, Attack, Dead }
 
     [Header("Detección y Distancias")]
-    [SerializeField] protected float _detectionRange = 12f; // a qué distancia me ve y empieza a correrme
-    [SerializeField] protected float _attackRange = 1.8f;   // a qué distancia frena para atacarme
-    [SerializeField] protected float _loseSightRange = 18f; // si me alejo más que esto, vuelve a Idle
+    [SerializeField] protected float _detectionRange = 7.5f; // solo me ve cuando entro a su sala
+    [SerializeField] protected float _attackRange = 1.6f;    // a qué distancia frena para atacarme
+    [SerializeField] protected float _loseSightRange = 14f;  // si me alejo más que esto, vuelve a Idle
 
     [Header("Ataque")]
-    [SerializeField] protected float _attackDamage = 15f;
-    [SerializeField] protected float _attackCooldown = 1f;
+    [SerializeField] protected float _attackDamage = 12f;
+    [SerializeField] protected float _attackCooldown = 1.1f;
+
+    [Header("Efecto del Tranquilizante y Empujón")]
+    [SerializeField] private float _hitStunDuration = 0.35f; // se frena un cachito cuando le clavo un dardo
+    [SerializeField] private float _sedatedSlowMultiplier = 0.6f; // camina más lento cuando ya tiene dardo encima
 
     [Header("Feedback de Daño y Corrupción")]
     [SerializeField] private Color _corruptTint = new Color(0.65f, 0.25f, 0.9f); // tinte violeta mientras está corrupto
@@ -43,9 +47,12 @@ public abstract class Enemy : Entity
     protected NavMeshAgent _agent;
     protected Rigidbody _rb;
     protected Animator _animator;
-    protected Transform _target;      // el jugador (o aliado) al que persigue
+    protected Transform _target;      // el jugador (o aliado como Dibu/Cuti) al que persigue
     protected Entity _targetEntity;
     protected float _attackTimer;
+    protected float _baseMoveSpeed = 4.2f;
+    private float _stunTimer;
+    private float _retaliateCheckTimer;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
@@ -107,9 +114,27 @@ public abstract class Enemy : Entity
 
         if (_attackTimer > 0f) _attackTimer -= Time.deltaTime;
 
+        // Si recibió un dardo o un empujón melee, queda aturdido/frenado un instante antes de volver a correr
+        if (_stunTimer > 0f)
+        {
+            _stunTimer -= Time.deltaTime;
+            StopAgent();
+            UpdateAnimator();
+            return;
+        }
+
+        // Me fijo cada tanto si Dibu o Cuti están más cerca mío peleándome para distraerme con ellos
+        _retaliateCheckTimer -= Time.deltaTime;
+        if (_retaliateCheckTimer <= 0f)
+        {
+            _retaliateCheckTimer = 0.35f;
+            RefreshClosestTarget();
+        }
+
         // Si no tengo objetivo o el jugador está muerto, me quedo quieto en Idle
         if (_target == null || (_targetEntity != null && _targetEntity.IsDead))
         {
+            RefreshClosestTarget();
             ChangeState(State.Idle);
             StopAgent();
             UpdateAnimator();
@@ -134,6 +159,32 @@ public abstract class Enemy : Entity
         UpdateAnimator();
     }
 
+    // Si hay un gatito aliado (Dibu/Cuti) más cerca mío que la veterinaria, me entretengo peleando con él
+    private void RefreshClosestTarget()
+    {
+        PlayerController player = FindFirstObjectByType<PlayerController>();
+        Transform bestTarget = player != null && !player.IsDead ? player.transform : null;
+        Entity bestEntity = player;
+        float bestDist = bestTarget != null ? Vector3.Distance(transform.position, bestTarget.position) : float.MaxValue;
+
+        Ally[] allies = FindObjectsByType<Ally>(FindObjectsSortMode.None);
+        foreach (Ally ally in allies)
+        {
+            if (ally == null || !ally.enabled || ally.IsDead) continue;
+            float d = Vector3.Distance(transform.position, ally.transform.position);
+            // Le doy un poquito de prioridad al aliado si está cerca para que haga de tanque
+            if (d < bestDist + 1.2f && d <= _detectionRange)
+            {
+                bestDist = d;
+                bestTarget = ally.transform;
+                bestEntity = ally;
+            }
+        }
+
+        _target = bestTarget;
+        _targetEntity = bestEntity;
+    }
+
     private void UpdateAnimator()
     {
         if (_animator == null) return;
@@ -147,9 +198,45 @@ public abstract class Enemy : Entity
     {
         StopAgent();
 
-        // Si el jugador entra en mi rango de visión, paso a perseguirlo
-        if (distToTarget <= _detectionRange)
+        // Solo me despierto si está en rango y además no hay una pared sólida en el medio (así no activo gatos de otra habitación)
+        if (distToTarget <= _detectionRange && HasLineOfSightToTarget())
             ChangeState(State.Chase);
+    }
+
+    private bool HasLineOfSightToTarget()
+    {
+        if (_target == null) return false;
+        Vector3 origin = transform.position + Vector3.up * 0.7f;
+        Vector3 dest = _target.position + Vector3.up * 0.7f;
+        Vector3 dir = dest - origin;
+        float dist = dir.magnitude;
+
+        RaycastHit[] hits = Physics.RaycastAll(origin, dir.normalized, dist);
+        foreach (RaycastHit h in hits)
+        {
+            if (h.collider.isTrigger) continue;
+            if (h.transform == transform || h.transform.IsChildOf(transform)) continue;
+            if (h.transform == _target || h.transform.IsChildOf(_target)) continue;
+            if (h.collider.GetComponentInParent<Enemy>() != null) continue;
+            if (h.collider.GetComponentInParent<Ally>() != null) continue;
+
+            // Si chocó contra una pared de la clínica, todavía no lo veo hasta que cruce la puerta
+            if (h.collider.name.StartsWith("Pared"))
+                return false;
+        }
+        return true;
+    }
+
+    // Permite que el generador de nivel o el jefe le suban vida, daño y velocidad según la habitación
+    public void ConfigureStats(float maxHealth, float damage, float moveSpeed, float detectionRange = 7.5f)
+    {
+        _maxHealth = maxHealth;
+        _currentHealth = maxHealth;
+        _attackDamage = damage;
+        _baseMoveSpeed = moveSpeed;
+        _detectionRange = detectionRange;
+        if (_agent != null)
+            _agent.speed = moveSpeed;
     }
 
     protected virtual void UpdateChase(float distToTarget)
@@ -229,9 +316,48 @@ public abstract class Enemy : Entity
         if (_currentState == State.Idle && !_isDead)
             ChangeState(State.Chase);
 
+        // El tranquilizante lo frena un cachito en seco y además lo deja caminando más lento por el sedante
+        _stunTimer = Mathf.Max(_stunTimer, _hitStunDuration);
+        StopAgent();
+        if (_agent != null)
+            _agent.speed = _baseMoveSpeed * _sedatedSlowMultiplier;
+
         if (_flashCoroutine != null) StopCoroutine(_flashCoroutine);
         if (gameObject.activeInHierarchy)
             _flashCoroutine = StartCoroutine(DamageFlashRoutine());
+    }
+
+    // Cuando la veterinaria tira el empujón melee, pauso el NavMeshAgent y lo corro hacia atrás de verdad
+    public void ApplyKnockback(Vector3 pushDir, float distance, float stunTime = 0.55f)
+    {
+        if (_isDead) return;
+        _stunTimer = Mathf.Max(_stunTimer, stunTime);
+        StopAgent();
+        if (gameObject.activeInHierarchy)
+            StartCoroutine(KnockbackRoutine(pushDir.normalized, distance, 0.18f));
+    }
+
+    private IEnumerator KnockbackRoutine(Vector3 dir, float distance, float duration)
+    {
+        dir.y = 0f;
+        Vector3 start = transform.position;
+        Vector3 end = start + dir * distance;
+
+        // Si hay NavMesh en el punto de caída lo uso así no atraviesa paredes con el empujón
+        if (NavMesh.SamplePosition(end, out NavMeshHit hit, 1.5f, NavMesh.AllAreas))
+            end = new Vector3(hit.position.x, start.y, hit.position.z);
+
+        float t = 0f;
+        while (t < duration && !_isDead)
+        {
+            t += Time.deltaTime;
+            Vector3 next = Vector3.Lerp(start, end, t / duration);
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+                _agent.Warp(next);
+            else
+                transform.position = next;
+            yield return null;
+        }
     }
 
     protected override void Die()
