@@ -64,7 +64,19 @@ public abstract class Enemy : Entity
 
         // Congelo la rotación y la posición Y para que no se caiga ni me levante cuando nos chocamos
         _rb.constraints = RigidbodyConstraints.FreezeRotation | RigidbodyConstraints.FreezePositionY;
+        _rb.mass = 0.05f; // livianito para que un gatito nunca pueda empujar a la veterinaria
         _rb.linearDamping = 6f; // que el empujón del melee frene rápido y no patine infinito
+
+        // Ignoro el choque físico directo entre el cápsula del enemigo y la del jugador para que al atacar no la mueva,
+        // pero sigue detectando los dardos (OnTriggerEnter) y el melee (OverlapSphere)
+        PlayerController player = FindFirstObjectByType<PlayerController>();
+        Collider myCol = GetComponent<Collider>();
+        if (player != null && myCol != null)
+        {
+            Collider playerCol = player.GetComponent<Collider>();
+            if (playerCol != null)
+                Physics.IgnoreCollision(myCol, playerCol, true);
+        }
 
         // Estiro la cápsula en Y para que los dardos (que salen a la altura del rifle) no les pasen por arriba a los animalitos petisos
         CapsuleCollider cap = GetComponent<CapsuleCollider>();

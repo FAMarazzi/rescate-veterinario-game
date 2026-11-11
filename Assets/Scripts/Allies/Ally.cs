@@ -49,6 +49,11 @@ public class Ally : Entity
         if (_agent != null)
             _agent.speed = _followSpeed;
 
+        // Le apago el Collider al aliado para que nunca me trabe en las puertas ni en los pasillos
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+            col.enabled = false;
+
         // Si viene de ser un enemigo, le congelo la física para que no me empuje al caminar al lado mío
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
@@ -71,6 +76,10 @@ public class Ally : Entity
             // Le pongo el mismo tag que el jugador para que los dardos del jugador no lo lastimen
             if (!string.IsNullOrEmpty(pc.gameObject.tag))
                 gameObject.tag = pc.gameObject.tag;
+
+            // Me aseguro de que el collider esté apagado así la veterinaria puede atravesar a sus propios gatitos aliados
+            Collider col = GetComponent<Collider>();
+            if (col != null) col.enabled = false;
         }
     }
 
@@ -99,6 +108,14 @@ public class Ally : Entity
                 ? _agent.velocity.magnitude
                 : 0f;
             _animator.SetFloat(SpeedHash, speed);
+        }
+        else if (transform.childCount > 0)
+        {
+            // Si el modelo del gatito no tiene Animator (como Cuti), le doy un saltito suave por código al caminar
+            Transform model = transform.GetChild(0);
+            bool moving = _agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped && _agent.velocity.sqrMagnitude > 0.05f;
+            float yHop = moving ? Mathf.Abs(Mathf.Sin(Time.time * 12f)) * 0.08f : 0f;
+            model.localPosition = new Vector3(model.localPosition.x, 0.1f + yHop, model.localPosition.z);
         }
     }
 
@@ -140,7 +157,15 @@ public class Ally : Entity
         _agent.speed = _followSpeed;
 
         float dist = Vector3.Distance(transform.position, _player.position);
-        if (dist > _followDistance)
+
+        // Si yo camino hacia el gatito y le quedo muy encima (ej. pasando una puerta), se corre un pasito atrás para darme paso
+        if (dist < 1.3f)
+        {
+            Vector3 stepAside = transform.position + (transform.position - _player.position).normalized * 1.5f;
+            _agent.isStopped = false;
+            _agent.SetDestination(stepAside);
+        }
+        else if (dist > _followDistance)
         {
             _agent.isStopped = false;
             _agent.SetDestination(_player.position);

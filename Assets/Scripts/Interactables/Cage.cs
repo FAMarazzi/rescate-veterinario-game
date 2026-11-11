@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/6/2026, 4:49:30 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/6/2026, 4:49:30 PM
+ * @LastEditTime: 11/11/2026, 11:24:12 AM
  * @Description: Jaula de la veterinaria donde están encerrados los gatitos aliados (como Cuti y Dibu).
  *   Cuando me acerco y toco la E, se abre y el gatito que estaba adentro activa su script Ally
  *   (o se instancia su prefab) para seguirme y ayudarme a pelear contra los gatos corruptos.
@@ -12,11 +12,12 @@
 
 using System.Collections;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class Cage : MonoBehaviour, IInteractable
 {
     [Header("Gatito Encerrado")]
-    [Tooltip("Si ya puse al gatito como hijo adentro de la jaula en la escena, lo arrastro acá")]
+    [Tooltip("Si ya puse al gatito adentro de la jaula en la escena, lo arrastro acá")]
     [SerializeField] private Ally _cagedAllyInScene;
     [Tooltip("O si prefiero que lo instancie de cero al abrirse, pongo el Prefab de Cuti o Dibu acá")]
     [SerializeField] private GameObject _allyPrefabToSpawn;
@@ -32,12 +33,19 @@ public class Cage : MonoBehaviour, IInteractable
 
     private void Awake()
     {
-        // Si el gatito ya está puesto adentro de la jaula, lo dejo quietito hasta que abran la puerta
+        // Si el gatito ya está puesto adentro de la jaula, le apago el Ally y el NavMeshAgent
+        // para que Unity no lo empuje afuera del BoxCollider de la jaula al darle Play
         if (_cagedAllyInScene == null)
             _cagedAllyInScene = GetComponentInChildren<Ally>();
 
         if (_cagedAllyInScene != null)
+        {
             _cagedAllyInScene.enabled = false;
+            NavMeshAgent agent = _cagedAllyInScene.GetComponent<NavMeshAgent>();
+            if (agent != null) agent.enabled = false;
+            Collider allyCol = _cagedAllyInScene.GetComponent<Collider>();
+            if (allyCol != null) allyCol.enabled = false;
+        }
 
         CreatePromptLabel();
     }
@@ -70,16 +78,28 @@ public class Cage : MonoBehaviour, IInteractable
         if (_promptObj != null)
             Destroy(_promptObj);
 
+        // Apago todos los colliders de la jaula primero para que no choquen con el gatito al salir
+        foreach (Collider c in GetComponentsInChildren<Collider>())
+            c.enabled = false;
+
         Vector3 exitPos = _spawnPoint != null
             ? _spawnPoint.position
-            : transform.position + transform.forward * 1.1f;
+            : transform.position + (player.transform.position - transform.position).normalized * 1.1f;
 
         if (_cagedAllyInScene != null)
         {
-            // Lo saco de adentro de la jaula, lo pongo en el piso adelante y le prendo el script Ally
+            // Lo saco de adentro de la jaula, lo pongo en el piso y le prendo el NavMeshAgent y el script Ally
             _cagedAllyInScene.transform.SetParent(null);
             exitPos.y = _cagedAllyInScene.transform.position.y;
             _cagedAllyInScene.transform.position = exitPos;
+
+            NavMeshAgent agent = _cagedAllyInScene.GetComponent<NavMeshAgent>();
+            if (agent != null)
+            {
+                agent.enabled = true;
+                agent.Warp(exitPos);
+            }
+
             _cagedAllyInScene.enabled = true;
         }
         else if (_allyPrefabToSpawn != null)
