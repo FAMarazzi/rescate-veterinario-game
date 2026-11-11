@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 10/30/2026, 11:27:00 AM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/6/2026, 5:33:09 PM
+ * @LastEditTime: 11/11/2026, 9:09:22 AM
  * @Description: Generador completo de niveles: Pisos en matriz, Paredes perimetrales, Habitaciones interiores con puertas
  *   y Decoración automática de cada sala de la clínica (Recepción, Farmacia, Consultorios, Sala de Jaulas y Quirófano).
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
@@ -33,8 +33,15 @@ public class RoomBuilderWindow : EditorWindow
     private GameObject _medicalCabinetPrefab;
     private GameObject _medicalCartPrefab;
     private GameObject _cagePrefab;
-    private float _propScaleMultiplier = 1f;
-    private Vector3 _propBaseRotation = new Vector3(0f, 0f, 0f);
+
+    // Alturas en metros pensadas respecto a las paredes de la clínica (~2.1m) y la veterinaria (~1.6m)
+    private float _deskHeight = 1.25f;
+    private float _tableHeight = 1.35f;
+    private float _cabinetHeight = 2.05f;
+    private float _cartHeight = 1.25f;
+    private float _cageHeight = 1.65f;
+    private float _propScaleMultiplier = 1.25f;
+    private Vector3 _propBaseRotation = new Vector3(-90f, 0f, 0f);
 
     [Header("Opciones Piso")]
     private bool _randomRotation = true;
@@ -115,7 +122,7 @@ public class RoomBuilderWindow : EditorWindow
     private void DrawPerimeterTab()
     {
         GUILayout.Label("Paredes Exteriores (Perímetro 4 lados)", EditorStyles.boldLabel);
-        _wallPrefab = (GameObject)EditorGUILayout.ahObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
+        _wallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab de Pared", _wallPrefab, typeof(GameObject), true);
         _doorWallPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Pared con Puerta (Opcional)", _doorWallPrefab, typeof(GameObject), true);
         _addPerimeterDoors = EditorGUILayout.Toggle("Incluir Puertas en Perímetro", _addPerimeterDoors);
         if (_addPerimeterDoors)
@@ -179,8 +186,18 @@ public class RoomBuilderWindow : EditorWindow
         _medicalCabinetPrefab = (GameObject)EditorGUILayout.ObjectField("3. Armario Médico", _medicalCabinetPrefab, typeof(GameObject), true);
         _medicalCartPrefab = (GameObject)EditorGUILayout.ObjectField("4. Carrito Médico", _medicalCartPrefab, typeof(GameObject), true);
         _cagePrefab = (GameObject)EditorGUILayout.ObjectField("5. Jaula (Kennel)", _cagePrefab, typeof(GameObject), true);
-        _propScaleMultiplier = EditorGUILayout.Slider("Escala de Muebles", _propScaleMultiplier, 0.5f, 2f);
+
+        EditorGUILayout.Space(5);
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        GUILayout.Label("Altura en Metros por Tipo de Mueble (Pared = 2.1m)", EditorStyles.miniBoldLabel);
+        _deskHeight = EditorGUILayout.Slider("Altura Mostrador (m)", _deskHeight, 0.8f, 2.5f);
+        _tableHeight = EditorGUILayout.Slider("Altura Camilla (m)", _tableHeight, 0.8f, 2.5f);
+        _cabinetHeight = EditorGUILayout.Slider("Altura Armario (m)", _cabinetHeight, 1.2f, 3.0f);
+        _cartHeight = EditorGUILayout.Slider("Altura Carrito (m)", _cartHeight, 0.8f, 2.2f);
+        _cageHeight = EditorGUILayout.Slider("Altura Jaula (m)", _cageHeight, 1.0f, 2.5f);
+        _propScaleMultiplier = EditorGUILayout.Slider("Multiplicador General", _propScaleMultiplier, 0.5f, 2.5f);
         _propBaseRotation = EditorGUILayout.Vector3Field("Rotación Base (X, Y, Z)", _propBaseRotation);
+        EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space(8);
         if (GUILayout.Button("🔍 Auto-Detectar los 5 Modelos en Assets/Models", GUILayout.Height(26)))
@@ -191,6 +208,8 @@ public class RoomBuilderWindow : EditorWindow
         EditorGUILayout.Space(8);
         if (GUILayout.Button("🛋️ Amoblar Toda la Clínica Automáticamente", GUILayout.Height(38)))
         {
+            if (_propBaseRotation == Vector3.zero)
+                _propBaseRotation = new Vector3(-90f, 0f, 0f);
             GenerateClinicDecoration();
         }
     }
@@ -505,18 +524,18 @@ public class RoomBuilderWindow : EditorWindow
             return new Vector3(startX + (col * _tileSize), 0f, startZ + (row * _tileSize));
         }
 
-        void SpawnProp(GameObject asset, Material mat, float col, float row, float yaw, float targetSizeMeters, string propName, bool isCage = false)
+        void SpawnProp(GameObject asset, Material mat, float col, float row, float yaw, float targetHeightMeters, string propName, bool isCage = false)
         {
             if (asset == null) return;
 
             Vector3 pos = TilePos(col, row);
-            Quaternion rot = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(_propBaseRotation);
+            // Primero lo pongo derecho sin giro Y (yaw = 0) para medir su altura exacta en Y sin que la caja de Bounds se ensanche por girar en diagonal
+            Quaternion baseRotOnly = Quaternion.Euler(_propBaseRotation);
             GameObject obj = (GameObject)PrefabUtility.InstantiatePrefab(asset, parent.transform);
             obj.name = propName;
-            obj.transform.SetPositionAndRotation(pos, rot);
+            obj.transform.SetPositionAndRotation(pos, baseRotOnly);
             obj.transform.localScale = Vector3.one;
 
-            // Le pongo su material a todos los renderers hijos y calculo el tamaño total para escalarlo prolijo y apoyarlo al piso
             Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
             if (renderers.Length > 0)
             {
@@ -530,14 +549,18 @@ public class RoomBuilderWindow : EditorWindow
                 for (int i = 1; i < renderers.Length; i++)
                     bounds.Encapsulate(renderers[i].bounds);
 
-                float maxHorizontal = Mathf.Max(bounds.size.x, bounds.size.z, bounds.size.y);
-                if (maxHorizontal > 0.0001f)
+                // Escalo siempre usando la ALTURA real (bounds.size.y) como referencia fija respecto a la veterinaria y las paredes
+                float currentHeight = bounds.size.y;
+                if (currentHeight > 0.0001f)
                 {
-                    float scaleFactor = (targetSizeMeters * _propScaleMultiplier) / maxHorizontal;
+                    float scaleFactor = (targetHeightMeters * _propScaleMultiplier) / currentHeight;
                     obj.transform.localScale = Vector3.one * scaleFactor;
                 }
 
-                // Recalculo bounds después de escalar para apoyar la base justo en Y = 0.02 (arriba de la baldosa)
+                // Ahora sí le aplico el giro en Y (yaw) de su ubicación en la sala
+                obj.transform.rotation = Quaternion.Euler(0f, yaw, 0f) * baseRotOnly;
+
+                // Recalculo bounds para apoyar las patas justo arriba de la baldosa (Y = 0.02)
                 bounds = renderers[0].bounds;
                 for (int i = 1; i < renderers.Length; i++)
                     bounds.Encapsulate(renderers[i].bounds);
@@ -565,49 +588,76 @@ public class RoomBuilderWindow : EditorWindow
             Undo.RegisterCreatedObjectUndo(obj, $"Spawn {propName}");
         }
 
-        // 1. RECEPCIÓN / ENTRADA (Cols 0..11, Filas 0..7)
-        // Mostrador principal mirando a la entrada Sur y armario de suministros contra la pared
-        SpawnProp(_receptionDeskPrefab, matDesk, 5.5f, 4.5f, 180f, 2.5f, "Recepcion_Mostrador");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.2f, 6.6f, 180f, 1.8f, "Recepcion_Armario");
-        SpawnProp(_medicalCartPrefab, matCart, 10.2f, 6.4f, 270f, 1.15f, "Recepcion_Carrito");
+        // 1. RECEPCIÓN / ADMISIÓN Y TRIAGE (Cols 0..11, Filas 0..7)
+        // Dos escritorios de recepción bien centrados en la sala (no pegados al muro sur), box de guardia/triage a la izquierda,
+        // armarios de fichas contra las paredes y jaulas de ingreso de pacientes
+        SpawnProp(_receptionDeskPrefab, matDesk, 5.2f, 2.2f, 0f, _deskHeight, "Recepcion_Mostrador_1");
+        SpawnProp(_receptionDeskPrefab, matDesk, 8.2f, 2.2f, 0f, _deskHeight, "Recepcion_Mostrador_2");
+        SpawnProp(_examTablePrefab, matTable, 2.2f, 4.8f, 90f, _tableHeight, "Recepcion_CamillaGuardia");
+        SpawnProp(_medicalCartPrefab, matCart, 2.2f, 6.2f, 180f, _cartHeight, "Recepcion_CarritoGuardia");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 0.7f, 6.8f, 180f, _cabinetHeight, "Recepcion_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 3.8f, 6.8f, 180f, _cabinetHeight, "Recepcion_Armario_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 6.2f, 6.8f, 180f, _cabinetHeight, "Recepcion_Armario_3");
+        SpawnProp(_cagePrefab, matCage, 10.8f, 5.8f, 270f, _cageHeight, "Recepcion_JaulaIngreso_1", true);
+        SpawnProp(_cagePrefab, matCage, 10.8f, 1.2f, 270f, _cageHeight, "Recepcion_JaulaIngreso_2", true);
 
-        // 2. FARMACIA / SUMINISTROS (Cols 12..19, Filas 0..7)
-        // Varios armarios médicos contra las paredes y carritos de medicamentos
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.0f, 6.7f, 180f, 1.85f, "Farmacia_Armario_1");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.5f, 6.7f, 180f, 1.85f, "Farmacia_Armario_2");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 18.6f, 3.5f, 270f, 1.85f, "Farmacia_Armario_3");
-        SpawnProp(_medicalCartPrefab, matCart, 15.5f, 2.5f, 45f, 1.15f, "Farmacia_Carrito_1");
-        SpawnProp(_medicalCartPrefab, matCart, 13.5f, 1.5f, 0f, 1.15f, "Farmacia_Carrito_2");
+        // 1B. PASILLO CENTRAL (Cols 8..11, Filas 8..19)
+        // Carritos médicos y armarios de emergencia contra los bordes del pasillo (dejando el centro libre para caminar)
+        SpawnProp(_medicalCartPrefab, matCart, 8.6f, 12.2f, 90f, _cartHeight, "Pasillo_Carrito_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 11.3f, 13.0f, 270f, _cabinetHeight, "Pasillo_Armario");
+        SpawnProp(_medicalCartPrefab, matCart, 8.6f, 18.2f, 90f, _cartHeight, "Pasillo_Carrito_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 10.0f, 18.8f, 180f, _cabinetHeight, "Pasillo_ArmarioFondo");
+
+        // 2. FARMACIA / DEPÓSITO Y LABORATORIO (Cols 12..19, Filas 0..7)
+        // Isla central con góndolas de medicamentos (armarios espalda con espalda), mesa de preparación y jaulas de cuarentena
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 13.8f, 6.8f, 180f, _cabinetHeight, "Farmacia_ArmarioNorte_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.4f, 6.8f, 180f, _cabinetHeight, "Farmacia_ArmarioNorte_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 18.8f, 5.2f, 270f, _cabinetHeight, "Farmacia_ArmarioEste_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 18.8f, 2.5f, 270f, _cabinetHeight, "Farmacia_ArmarioEste_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 16.5f, 0.7f, 0f, _cabinetHeight, "Farmacia_ArmarioSur_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.0f, 0.7f, 0f, _cabinetHeight, "Farmacia_ArmarioSur_2");
+        // Isla central de farmacia / preparación
+        SpawnProp(_examTablePrefab, matTable, 15.8f, 4.2f, 0f, _tableHeight, "Farmacia_MesaLaboratorio");
+        SpawnProp(_medicalCartPrefab, matCart, 14.3f, 4.2f, 90f, _cartHeight, "Farmacia_Carrito_1");
+        SpawnProp(_medicalCartPrefab, matCart, 17.2f, 4.2f, 270f, _cartHeight, "Farmacia_Carrito_2");
+        SpawnProp(_cagePrefab, matCage, 12.8f, 5.8f, 90f, _cageHeight, "Farmacia_JaulaCuarentena", true);
 
         // 3. CONSULTORIO 1 (Cols 0..7, Filas 8..13)
-        // Camilla en el centro, carrito al lado y armario médico contra la pared
-        SpawnProp(_examTablePrefab, matTable, 3.5f, 11.0f, 90f, 1.9f, "Consultorio1_Camilla");
-        SpawnProp(_medicalCartPrefab, matCart, 3.5f, 12.6f, 180f, 1.1f, "Consultorio1_Carrito");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.0f, 12.8f, 180f, 1.8f, "Consultorio1_Armario");
+        // Dos camillas de atención, carritos, armarios y una jaula
+        SpawnProp(_examTablePrefab, matTable, 2.8f, 10.8f, 90f, _tableHeight, "Consultorio1_Camilla_1");
+        SpawnProp(_examTablePrefab, matTable, 5.5f, 10.8f, 90f, _tableHeight, "Consultorio1_Camilla_2");
+        SpawnProp(_medicalCartPrefab, matCart, 2.8f, 12.5f, 180f, _cartHeight, "Consultorio1_Carrito_1");
+        SpawnProp(_medicalCartPrefab, matCart, 5.5f, 12.5f, 180f, _cartHeight, "Consultorio1_Carrito_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 0.8f, 12.8f, 180f, _cabinetHeight, "Consultorio1_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 0.8f, 8.8f, 0f, _cabinetHeight, "Consultorio1_Armario_2");
+        SpawnProp(_cagePrefab, matCage, 4.2f, 8.7f, 0f, _cageHeight, "Consultorio1_Jaula", true);
 
         // 4. CONSULTORIO 2 (Cols 0..7, Filas 14..19)
-        // Camilla de revisación, carrito de instrumental, armario y una jaula de observación
-        SpawnProp(_examTablePrefab, matTable, 3.5f, 16.8f, 90f, 1.9f, "Consultorio2_Camilla");
-        SpawnProp(_medicalCartPrefab, matCart, 5.2f, 18.2f, 180f, 1.1f, "Consultorio2_Carrito");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 1.0f, 18.6f, 180f, 1.8f, "Consultorio2_Armario");
-        SpawnProp(_cagePrefab, matCage, 1.2f, 15.2f, 90f, 1.5f, "Consultorio2_Jaula", true);
+        SpawnProp(_examTablePrefab, matTable, 2.8f, 16.8f, 90f, _tableHeight, "Consultorio2_Camilla_1");
+        SpawnProp(_examTablePrefab, matTable, 5.5f, 16.8f, 90f, _tableHeight, "Consultorio2_Camilla_2");
+        SpawnProp(_medicalCartPrefab, matCart, 4.2f, 18.4f, 180f, _cartHeight, "Consultorio2_Carrito");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 0.8f, 18.7f, 180f, _cabinetHeight, "Consultorio2_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 6.6f, 18.7f, 180f, _cabinetHeight, "Consultorio2_Armario_2");
+        SpawnProp(_cagePrefab, matCage, 1.0f, 15.0f, 90f, _cageHeight, "Consultorio2_Jaula_1", true);
+        SpawnProp(_cagePrefab, matCage, 4.0f, 14.8f, 0f, _cageHeight, "Consultorio2_Jaula_2", true);
 
         // 5. SALA DE JAULAS / INTERNACIÓN (Cols 12..19, Filas 8..13)
-        // Filas de jaulas (Kennels) para rescatar gatitos y una camilla de internación
-        SpawnProp(_cagePrefab, matCage, 14.5f, 12.7f, 180f, 1.55f, "Internacion_Jaula_1", true);
-        SpawnProp(_cagePrefab, matCage, 17.2f, 12.7f, 180f, 1.55f, "Internacion_Jaula_2", true);
-        SpawnProp(_cagePrefab, matCage, 18.5f, 10.2f, 270f, 1.55f, "Internacion_Jaula_3", true);
-        SpawnProp(_examTablePrefab, matTable, 15.0f, 9.4f, 0f, 1.8f, "Internacion_Camilla");
-        SpawnProp(_medicalCartPrefab, matCart, 13.2f, 12.5f, 180f, 1.1f, "Internacion_Carrito");
+        SpawnProp(_cagePrefab, matCage, 14.2f, 12.7f, 180f, _cageHeight, "Internacion_Jaula_1", true);
+        SpawnProp(_cagePrefab, matCage, 16.8f, 12.7f, 180f, _cageHeight, "Internacion_Jaula_2", true);
+        SpawnProp(_cagePrefab, matCage, 18.6f, 11.2f, 270f, _cageHeight, "Internacion_Jaula_3", true);
+        SpawnProp(_cagePrefab, matCage, 18.6f, 9.2f, 270f, _cageHeight, "Internacion_Jaula_4", true);
+        SpawnProp(_examTablePrefab, matTable, 15.0f, 9.4f, 0f, _tableHeight, "Internacion_Camilla");
+        SpawnProp(_medicalCartPrefab, matCart, 13.0f, 12.5f, 180f, _cartHeight, "Internacion_Carrito");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 13.0f, 8.8f, 0f, _cabinetHeight, "Internacion_Armario");
 
         // 6. QUIRÓFANO / SALA DEL JEFE (Cols 12..19, Filas 14..19)
-        // Mesa quirúrgica central, dos carritos de cirugía, armarios al fondo y jaula especial
-        SpawnProp(_examTablePrefab, matTable, 15.8f, 16.8f, 0f, 2.1f, "Quirofano_MesaQuirurgica");
-        SpawnProp(_medicalCartPrefab, matCart, 14.2f, 17.5f, 90f, 1.15f, "Quirofano_Carrito_1");
-        SpawnProp(_medicalCartPrefab, matCart, 17.4f, 17.5f, 270f, 1.15f, "Quirofano_Carrito_2");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.5f, 18.7f, 180f, 1.85f, "Quirofano_Armario_1");
-        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.2f, 18.7f, 180f, 1.85f, "Quirofano_Armario_2");
-        SpawnProp(_cagePrefab, matCage, 18.5f, 15.2f, 270f, 1.6f, "Quirofano_Jaula", true);
+        SpawnProp(_examTablePrefab, matTable, 15.8f, 16.8f, 0f, _tableHeight, "Quirofano_MesaQuirurgica");
+        SpawnProp(_medicalCartPrefab, matCart, 14.2f, 17.5f, 90f, _cartHeight, "Quirofano_Carrito_1");
+        SpawnProp(_medicalCartPrefab, matCart, 17.4f, 17.5f, 270f, _cartHeight, "Quirofano_Carrito_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 14.2f, 18.7f, 180f, _cabinetHeight, "Quirofano_Armario_1");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 17.2f, 18.7f, 180f, _cabinetHeight, "Quirofano_Armario_2");
+        SpawnProp(_medicalCabinetPrefab, matCabinet, 18.7f, 17.2f, 270f, _cabinetHeight, "Quirofano_Armario_3");
+        SpawnProp(_cagePrefab, matCage, 18.5f, 15.0f, 270f, _cageHeight, "Quirofano_Jaula", true);
 
         // Si el piso tiene NavMeshSurface, lo re-horneo automáticamente para que los gatos esquiven los muebles nuevos
         GameObject piso = GameObject.Find("Clinica_Piso");
