@@ -106,6 +106,13 @@ public abstract class Enemy : Entity
             _target = player.transform;
             _targetEntity = player;
         }
+
+        // Creo la barra de vida flotante para cumplir con que todas las unidades tengan su barra de salud
+        if (GetComponent<WorldHealthBar>() == null)
+        {
+            bool isBoss = gameObject.name.Contains("Jefe") || _maxHealth >= 150f;
+            gameObject.AddComponent<WorldHealthBar>().AttachTo(this, false, isBoss);
+        }
     }
 
     protected virtual void Update()
@@ -170,7 +177,7 @@ public abstract class Enemy : Entity
         Ally[] allies = FindObjectsByType<Ally>(FindObjectsSortMode.None);
         foreach (Ally ally in allies)
         {
-            if (ally == null || !ally.enabled || ally.IsDead) continue;
+            if (ally == null || !ally.enabled || ally.IsDead || ally.IsCorrupted) continue;
             float d = Vector3.Distance(transform.position, ally.transform.position);
             // Le doy un poquito de prioridad al aliado si está cerca para que haga de tanque
             if (d < bestDist + 1.2f && d <= _detectionRange)

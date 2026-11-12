@@ -159,6 +159,7 @@ public class PlayerController : Entity
         _medkits--;
         Heal(_medkitHealAmount);
         OnMedkitsChanged?.Invoke(_medkits);
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayHeal();
         return true;
     }
 
@@ -323,6 +324,7 @@ public class PlayerController : Entity
     private void MeleeAttack()
     {
         SetAnimTrigger(MeleeHash);
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayMelee();
         Collider[] hits = Physics.OverlapSphere(transform.position, _meleeRange);
 
         // Uso la dirección hacia el mouse para que el cono de golpe coincida con donde miro aunque tenga _aimYawOffset
@@ -364,6 +366,7 @@ public class PlayerController : Entity
     private void ShootDart()
     {
         SetAnimTrigger(ShootHash);
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayDartShoot();
         if (BulletPool.Instance == null) return;
 
         Transform origin = GetActiveShootPoint();
@@ -374,15 +377,23 @@ public class PlayerController : Entity
         dir.y = 0f; // el dardo viaja plano
         if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
 
-        // Si un gato ya se me metió recontra encima (más cerca que la punta del cañón), hago que el dardo nazca un cachito más atrás así le pega igual a quemarropa
+        // Si un gato (enemigo o aliado corrompido) ya se me metió recontra encima, hago que el dardo nazca desde el centro así le pega igual a quemarropa
         Vector3 spawnPos = origin.position;
         Collider[] closeHits = Physics.OverlapSphere(transform.position + Vector3.up * 0.8f, 1.35f);
         foreach (Collider c in closeHits)
         {
             Enemy closeEnemy = c.GetComponentInParent<Enemy>();
+            Ally closeCorruptAlly = c.GetComponentInParent<Ally>();
+            Transform targetTr = null;
+
             if (closeEnemy != null && !closeEnemy.IsDead)
+                targetTr = closeEnemy.transform;
+            else if (closeCorruptAlly != null && closeCorruptAlly.IsCorrupted)
+                targetTr = closeCorruptAlly.transform;
+
+            if (targetTr != null)
             {
-                Vector3 toEnemy = closeEnemy.transform.position - transform.position;
+                Vector3 toEnemy = targetTr.position - transform.position;
                 toEnemy.y = 0f;
                 if (Vector3.Angle(dir, toEnemy) < 55f)
                 {

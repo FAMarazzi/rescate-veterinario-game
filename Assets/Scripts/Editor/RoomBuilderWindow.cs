@@ -14,7 +14,7 @@ using UnityEngine;
 
 public class RoomBuilderWindow : EditorWindow
 {
-    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores, Decoracion, Enemigos }
+    private enum Tab { Piso, ParedesPerimetro, HabitacionesInteriores, Decoracion, Enemigos, Iluminacion }
     private Tab _currentTab = Tab.Piso;
 
     [Header("Configuración General")]
@@ -71,7 +71,7 @@ public class RoomBuilderWindow : EditorWindow
         GUILayout.Label("Generador de Clínica Veterinaria", EditorStyles.boldLabel);
         EditorGUILayout.Space(5);
 
-        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Perímetro", "3. Salas", "4. Decoración", "5. Enemigos" });
+        _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, new string[] { "1. Piso", "2. Perímetro", "3. Salas", "4. Decoración", "5. Enemigos", "6. Luces" });
         EditorGUILayout.Space(10);
 
         // Campos globales compartidos
@@ -100,6 +100,9 @@ public class RoomBuilderWindow : EditorWindow
                 break;
             case Tab.Enemigos:
                 DrawEnemiesTab();
+                break;
+            case Tab.Iluminacion:
+                DrawLightingTab();
                 break;
         }
 
@@ -857,5 +860,211 @@ public class RoomBuilderWindow : EditorWindow
         }
 
         EditorUtility.DisplayDialog("Optimización Lista", $"Se optimizaron {count} objetos de la clínica (Static Batching activado + sombras de piso apagadas).", "Genial");
+    }
+
+    // ==========================================
+    // 6. ILUMINACIÓN COMPLEJA Y ATMOSFÉRICA POR SALA
+    // ==========================================
+    private void DrawLightingTab()
+    {
+        GUILayout.Label("Sistema de Iluminación Atmosférica por Sala", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Reemplaza la iluminación plana de una sola luz por un esquema multicapa con identidad visual por sala y efectos dinámicos (ClinicLightEffects):\n" +
+            "• Luz Direccional Nocturna fría suave + Ambiente Trilight.\n" +
+            "• Recepción: Luz cálida de bienvenida + Spot Light sobre el mostrador.\n" +
+            "• Pasillo Central: 3 plafones clínicos + Luz de emergencia ámbar pulsante.\n" +
+            "• Farmacia: Iluminación verde-azulada sobre los botiquines.\n" +
+            "• Consultorios 1 y 2: Lámparas scialíticas (Spot Lights) sobre camillas + tubo fluorescente con falso contacto (Perlin Noise).\n" +
+            "• Sala de Jaulas: Luz ambiental violeta suave + foco cálido sobre las jaulas.\n" +
+            "• Quirófano (Boss): Sirena roja de emergencia pulsante + potente reflector quirúrgico sobre el Gato Jefe.",
+            MessageType.Info);
+
+        EditorGUILayout.Space(10);
+        if (GUILayout.Button("💡 Generar Iluminación Compleja en Toda la Clínica", GUILayout.Height(40)))
+        {
+            GenerateClinicLighting();
+        }
+
+        EditorGUILayout.Space(8);
+        if (GUILayout.Button("☀️ Restaurar Luz Simple Original (Por si querés comparar)", GUILayout.Height(28)))
+        {
+            RestoreDefaultDaylight();
+        }
+    }
+
+    private void GenerateClinicLighting()
+    {
+        // 1. Subo el límite de luces adicionales por objeto en URP para que todas las salas brillen al mismo tiempo
+        var urpAsset = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+        if (urpAsset != null)
+        {
+            SerializedObject so = new SerializedObject(urpAsset);
+            SerializedProperty maxLightsProp = so.FindProperty("m_AdditionalLightsPerObjectLimit");
+            if (maxLightsProp != null)
+            {
+                maxLightsProp.intValue = 8;
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(urpAsset);
+            }
+        }
+
+        // 2. Atenúo la Directional Light principal a un tono nocturno profundo para que se note el contraste real entre salas iluminadas y rincones en sombra
+        Light[] allLights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+        foreach (Light l in allLights)
+        {
+            if (l.type == LightType.Directional)
+            {
+                Undo.RecordObject(l, "Ajustar Directional Light");
+                l.color = new Color(0.38f, 0.48f, 0.72f); // Azul noche clínico
+                l.intensity = 0.25f;
+                l.shadows = LightShadows.Soft;
+                l.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
+                EditorUtility.SetDirty(l);
+            }
+        }
+
+        // 3. Configuro Luz Ambiental Trilight más oscura para que brillen los colores de cada sala
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = new Color(0.18f, 0.22f, 0.32f);
+        RenderSettings.ambientEquatorColor = new Color(0.14f, 0.16f, 0.22f);
+        RenderSettings.ambientGroundColor = new Color(0.08f, 0.08f, 0.12f);
+
+        GameObject parent = GetOrCreateParent("Clinica_Iluminacion");
+        ClearChildren(parent);
+
+        float startX = -((_columns - 1) * _tileSize) * 0.5f;
+        float startZ = -((_rows - 1) * _tileSize) * 0.5f;
+
+        Vector3 TilePos(float col, float row, float heightY)
+        {
+            return new Vector3(startX + (col * _tileSize), heightY, startZ + (row * _tileSize));
+        }
+
+        // Helper para crear Point Lights de techo con intensidad real para URP
+        GameObject CreatePointLight(string lightName, float col, float row, float heightY, Color color, float intensity, float range, bool softShadows = false)
+        {
+            GameObject go = new GameObject(lightName);
+            go.transform.SetParent(parent.transform);
+            go.transform.position = TilePos(col, row, heightY);
+
+            Light light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.shadows = softShadows ? LightShadows.Soft : LightShadows.None;
+
+            Undo.RegisterCreatedObjectUndo(go, $"Crear {lightName}");
+            return go;
+        }
+
+        // Helper para crear Spot Lights de cono ancho y borde difuminado (sin círculo duro en el piso)
+        GameObject CreateSpotLight(string lightName, float col, float row, float heightY, Color color, float intensity, float range, float spotAngle, bool softShadows = true)
+        {
+            GameObject go = new GameObject(lightName);
+            go.transform.SetParent(parent.transform);
+            go.transform.position = TilePos(col, row, heightY);
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+            Light light = go.AddComponent<Light>();
+            light.type = LightType.Spot;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.spotAngle = spotAngle;
+            light.innerSpotAngle = spotAngle * 0.25f; // Degradado muy suave desde el centro hasta el borde
+            light.shadows = softShadows ? LightShadows.Soft : LightShadows.None;
+
+            Undo.RegisterCreatedObjectUndo(go, $"Crear {lightName}");
+            return go;
+        }
+
+        // --- A. SALA 1: RECEPCIÓN (Doble plafón cálido + Baño de luz sobre la entrada) ---
+        CreatePointLight("Luz_Recepcion_Oeste", 2.8f, 3.5f, 2.9f, new Color(1.0f, 0.88f, 0.68f), 14f, 12f, true);
+        CreatePointLight("Luz_Recepcion_Este", 6.5f, 4.5f, 2.9f, new Color(1.0f, 0.92f, 0.78f), 12f, 11f, false);
+        CreateSpotLight("Foco_Recepcion_Amplio", 4.5f, 3.5f, 4.5f, new Color(1.0f, 0.94f, 0.82f), 18f, 10f, 110f, true);
+
+        // --- B. PASILLO CENTRAL (Iluminación de corredor con contraste frío/ámbar) ---
+        CreatePointLight("Luz_Pasillo_Sur", 9.5f, 3.5f, 2.9f, new Color(0.75f, 0.90f, 1.0f), 11f, 10f);
+        CreatePointLight("Luz_Pasillo_Centro", 9.5f, 9.8f, 2.9f, new Color(0.75f, 0.90f, 1.0f), 11f, 10f);
+        GameObject pasilloFondo = CreatePointLight("Luz_Pasillo_AlertaQuirofano", 9.5f, 15.8f, 2.9f, new Color(1.0f, 0.55f, 0.15f), 14f, 11f);
+        pasilloFondo.AddComponent<ClinicLightEffects>().Configure(ClinicLightEffects.LightEffectMode.EmergencyPulse, 15f, 2.5f, 3.2f);
+
+        // --- C. SALA 2: FARMACIA / BOTIQUINES (Doble luz cian/esmeralda médica) ---
+        CreatePointLight("Luz_Farmacia_Norte", 15.0f, 5.2f, 2.9f, new Color(0.45f, 1.0f, 0.82f), 13f, 11f, true);
+        CreatePointLight("Luz_Farmacia_Sur", 16.8f, 2.2f, 2.9f, new Color(0.65f, 0.95f, 1.0f), 11f, 10f);
+
+        // --- D. SALA 3: CONSULTORIO 1 (Contraste clínico azul-blanco + luz de relleno) ---
+        CreatePointLight("Luz_Consultorio1_Principal", 2.5f, 10.5f, 2.9f, new Color(0.78f, 0.92f, 1.0f), 13f, 11f, true);
+        CreatePointLight("Luz_Consultorio1_Secundaria", 5.8f, 11.8f, 2.9f, new Color(0.95f, 0.88f, 1.0f), 9f, 9f);
+
+        // --- E. SALA 4: CONSULTORIO 2 (Tubo fluorescente dañado con parpadeo + contraluz violeta) ---
+        GameObject tuboRoto = CreatePointLight("Luz_Consultorio2_FluorescenteRoto", 3.2f, 16.8f, 2.9f, new Color(0.75f, 0.95f, 1.0f), 15f, 12f, true);
+        tuboRoto.AddComponent<ClinicLightEffects>().Configure(ClinicLightEffects.LightEffectMode.FluorescentFlicker, 16f, 0.8f, 5.0f);
+        CreatePointLight("Luz_Consultorio2_Relleno", 6.0f, 15.5f, 2.5f, new Color(0.85f, 0.55f, 1.0f), 8f, 8.5f);
+
+        // --- F. SALA 5: INTERNACIÓN / JAULAS (Doble ambiente: corrupción violeta vs rescate cálido) ---
+        GameObject luzJaulas = CreatePointLight("Luz_Internacion_Violeta", 14.2f, 10.2f, 2.9f, new Color(0.72f, 0.45f, 1.0f), 13f, 11f, true);
+        luzJaulas.AddComponent<ClinicLightEffects>().Configure(ClinicLightEffects.LightEffectMode.SubtleBreathing, 14f, 5f, 2.2f);
+        CreatePointLight("Luz_Internacion_Calida", 17.5f, 11.5f, 2.9f, new Color(1.0f, 0.82f, 0.52f), 12f, 10f);
+
+        // --- G. SALA 6: QUIRÓFANO / JEFE FINAL (Sirena Roja de Emergencia + Luz Quirúrgica + Contraluz) ---
+        GameObject alarmaJefe = CreatePointLight("Luz_Quirofano_AlarmaRoja", 14.5f, 16.0f, 3.0f, new Color(1.0f, 0.12f, 0.15f), 20f, 14f, true);
+        alarmaJefe.AddComponent<ClinicLightEffects>().Configure(ClinicLightEffects.LightEffectMode.EmergencyPulse, 22f, 2.0f, 4.5f, true);
+        CreatePointLight("Luz_Quirofano_QuirurgicaFria", 17.2f, 17.5f, 3.0f, new Color(0.80f, 0.96f, 1.0f), 14f, 11f);
+
+        // --- H. LUCES DE ACENTO AUTOMÁTICAS EN JAULAS Y BOTIQUINES DE LA ESCENA ---
+        // Busco las jaulas y armarios reales donde vos los hayas ubicado para ponerles un halo de luz propio (guía visual de gameplay)
+        foreach (Cage cage in FindObjectsByType<Cage>(FindObjectsSortMode.None))
+        {
+            GameObject cageLight = new GameObject($"LuzGuia_{cage.name}");
+            cageLight.transform.SetParent(parent.transform);
+            cageLight.transform.position = cage.transform.position + new Vector3(0f, 1.6f, 0f);
+            Light l = cageLight.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = new Color(1.0f, 0.85f, 0.45f); // Dorado cálido sobre cada jaula a rescatar
+            l.intensity = 4.5f;
+            l.range = 3.8f;
+            Undo.RegisterCreatedObjectUndo(cageLight, "Luz Jaula");
+        }
+
+        foreach (MedicineCabinet cab in FindObjectsByType<MedicineCabinet>(FindObjectsSortMode.None))
+        {
+            GameObject cabLight = new GameObject($"LuzBotiquin_{cab.name}");
+            cabLight.transform.SetParent(parent.transform);
+            cabLight.transform.position = cab.transform.position + cab.transform.forward * 0.6f + new Vector3(0f, 1.5f, 0f);
+            Light l = cabLight.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = new Color(0.35f, 1.0f, 0.65f); // Verde salud suave en cada botiquín
+            l.intensity = 3.5f;
+            l.range = 3.2f;
+            Undo.RegisterCreatedObjectUndo(cabLight, "Luz Botiquin");
+        }
+
+        Selection.activeGameObject = parent;
+        EditorUtility.DisplayDialog(
+            "Iluminación Compleja Generada",
+            "¡Se actualizó la iluminación con múltiples fuentes de luz por sala, degradados suaves sin círculos duros en el piso, sombras proyectadas y luces guía automáticas sobre cada Jaula (doradas) y cada Armario de Botiquines (verdes)!",
+            "¡A probarlo!");
+    }
+
+    private void RestoreDefaultDaylight()
+    {
+        GameObject parent = GameObject.Find("Clinica_Iluminacion");
+        if (parent != null)
+            Undo.DestroyObjectImmediate(parent);
+
+        Light[] allLights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+        foreach (Light l in allLights)
+        {
+            if (l.type == LightType.Directional)
+            {
+                Undo.RecordObject(l, "Restaurar Directional Light");
+                l.color = new Color(1f, 0.956f, 0.839f);
+                l.intensity = 1.0f;
+                EditorUtility.SetDirty(l);
+            }
+        }
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
     }
 }
