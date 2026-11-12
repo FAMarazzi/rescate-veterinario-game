@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 1:06:19 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/11/2026, 7:14:10 PM
+ * @LastEditTime: 11/12/2026, 7:57:49 AM
  * @Description: Dardo tranquilizante que sale del pool. Lo traje del BulletController del proyecto anterior.
  *   CAMBIOS: ahora ignoro los triggers (zonas, sensores) para que no desaparezca al cruzarlos,
  *   y busco el IDamageable también en el padre por si el collider es de un hijo.
