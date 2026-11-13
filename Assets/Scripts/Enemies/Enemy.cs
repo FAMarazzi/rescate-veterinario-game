@@ -58,6 +58,7 @@ public abstract class Enemy : Entity
     protected float _baseMoveSpeed = 4.2f;
     private float _stunTimer;
     private float _retaliateCheckTimer;
+    private Vector3 _lastFramePos;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
@@ -106,6 +107,9 @@ public abstract class Enemy : Entity
     {
         if (!ActiveEnemies.Contains(this))
             ActiveEnemies.Add(this);
+
+        if (_animator == null || !_animator.enabled)
+            SetupValidAnimator();
     }
 
     protected virtual void OnDisable()
@@ -115,6 +119,7 @@ public abstract class Enemy : Entity
 
     protected virtual void Start()
     {
+        _lastFramePos = transform.position;
         if (_cachedPlayer == null)
             _cachedPlayer = FindFirstObjectByType<PlayerController>();
 
@@ -240,7 +245,12 @@ public abstract class Enemy : Entity
             if (anims[i] == _animator && _animator.runtimeAnimatorController != null)
             {
                 anims[i].enabled = true;
+                anims[i].speed = 1f;
                 anims[i].applyRootMotion = false;
+                anims[i].cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                anims[i].updateMode = AnimatorUpdateMode.Normal;
+                if (!anims[i].isInitialized)
+                    anims[i].Rebind();
             }
             else if (anims[i].runtimeAnimatorController == null)
             {
@@ -252,9 +262,19 @@ public abstract class Enemy : Entity
 
     private void UpdateAnimator()
     {
-        float speed = (_agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped)
-            ? _agent.velocity.magnitude
+        float agentSpeed = 0f;
+        if (_agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped)
+        {
+            agentSpeed = Mathf.Max(_agent.velocity.magnitude, _agent.desiredVelocity.magnitude);
+        }
+
+        // También medimos el desplazamiento real por frame por si el agente o la física deslizan al gato
+        float realSpeed = Time.deltaTime > 0.0001f
+            ? Vector3.Distance(transform.position, _lastFramePos) / Time.deltaTime
             : 0f;
+        _lastFramePos = transform.position;
+
+        float speed = Mathf.Max(agentSpeed, realSpeed);
 
         if (_animator != null && _animator.enabled && _animator.runtimeAnimatorController != null)
         {
