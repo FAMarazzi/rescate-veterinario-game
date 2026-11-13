@@ -82,9 +82,16 @@ public class GameManager : MonoBehaviour
     private Text _volumeLabelText;
     private Slider _titleVolumeSlider;
 
-    // Pantalla de Historia / Informe de Emergencia (al darle Jugar)
+    // Pantalla de Historia / Informe de Emergencia (3 diapositivas separadas al darle Jugar)
     private GameObject _introStoryPanel;
-    private CanvasGroup[] _introCardGroups;
+    private int _introSlideIndex;
+    private Text _introStepText;
+    private Text _introSlideTitleText;
+    private Text _introSlideBodyText;
+    private Image _introAccentStripe;
+    private Text _introNextBtnLabel;
+    private GameObject _introSkipButtonObj;
+    private CanvasGroup _introSlideGroup;
     private Coroutine _introFadeCoroutine;
 
     // Menú de Pausa Independiente (al apretar ESC durante la partida)
@@ -155,11 +162,11 @@ public class GameManager : MonoBehaviour
     {
         if (Keyboard.current == null) return;
 
-        // Si está abierta la pantalla de Historia / Informe de Emergencia, Enter la salta/empieza y ESC vuelve al Menú
+        // Si está abierta la pantalla de Historia / Informe de Emergencia, Enter avanza de diapositiva y ESC vuelve al Menú
         if (_introStoryPanel != null && _introStoryPanel.activeSelf)
         {
             if (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame)
-                StartOrResumeGame();
+                AdvanceIntroSlide();
             else if (Keyboard.current.escapeKey.wasPressedThisFrame)
                 OpenTitleMenu();
             return;
@@ -541,38 +548,92 @@ public class GameManager : MonoBehaviour
 
         _introStoryPanel.SetActive(true);
         Time.timeScale = 0f;
+        ShowIntroSlide(0);
+    }
+
+    public void AdvanceIntroSlide()
+    {
+        if (_introSlideIndex < 2)
+        {
+            ShowIntroSlide(_introSlideIndex + 1);
+        }
+        else
+        {
+            StartOrResumeGame();
+        }
+    }
+
+    private void ShowIntroSlide(int index)
+    {
+        _introSlideIndex = Mathf.Clamp(index, 0, 2);
+
+        Color[] accents =
+        {
+            new Color(0.96f, 0.35f, 0.55f),
+            new Color(0.38f, 1.00f, 0.88f),
+            new Color(1.00f, 0.85f, 0.35f)
+        };
+
+        string[] steps =
+        {
+            "DIAPOSITIVA 1 / 3  •  EXPEDIENTE CLÍNICO #04",
+            "DIAPOSITIVA 2 / 3  •  PROTOCOLO DE RESCATE",
+            "DIAPOSITIVA 3 / 3  •  ALIADOS Y BOTIQUINES"
+        };
+
+        string[] titles =
+        {
+            "¿QUÉ PASÓ EN LA CLÍNICA?",
+            "TU MISIÓN: SIN LASTIMAR A NADIE",
+            "TUS COMPAÑEROS: DIBU Y CUTI"
+        };
+
+        string[] bodies =
+        {
+            "¡Alerta en la Clínica Veterinaria!\n\nUn frasco de suero experimental se rompió en el Quirófano y su neblina violeta alteró a los gatos internados, volviéndolos agresivos.\n\nLa clínica quedó tomada y todos los gatitos en sus jaulas esperan que los rescates.",
+            "Tomá tu rifle de dardos sedantes:\n\n• Apuntá con [Click Derecho] y dispará con [Click Izquierdo] para dormir a los gatos corruptos (incluido el Gato Jefe del Quirófano).\n• Si se te enciman, empujalos con [Barra Espaciadora].\n• Abrí todas las jaulas con la tecla [E] para liberar a los gatitos.",
+            "No estás sola en esta guardia:\n\n• Dibu y Cuti están encerrados en la clínica: liberalos con [E] para que te ayuden a distraer y frenar a los corruptos.\n• Si alguno se corrompe, sedalo con tus dardos para curarlo.\n• Si te lastiman, usá un botiquín con la tecla [Q]."
+        };
+
+        if (_introAccentStripe != null) _introAccentStripe.color = accents[_introSlideIndex];
+        if (_introStepText != null)
+        {
+            _introStepText.text = steps[_introSlideIndex];
+            _introStepText.color = accents[_introSlideIndex];
+        }
+        if (_introSlideTitleText != null)
+        {
+            _introSlideTitleText.text = titles[_introSlideIndex];
+            _introSlideTitleText.color = accents[_introSlideIndex];
+        }
+        if (_introSlideBodyText != null)
+            _introSlideBodyText.text = bodies[_introSlideIndex];
+
+        if (_introNextBtnLabel != null)
+            _introNextBtnLabel.text = _introSlideIndex < 2 ? "SIGUIENTE  →  (Enter)" : "▶  ¡COMENZAR RESCATE! (Enter)";
+
+        if (_introSkipButtonObj != null)
+            _introSkipButtonObj.SetActive(_introSlideIndex < 2);
 
         if (_introFadeCoroutine != null)
             StopCoroutine(_introFadeCoroutine);
-        _introFadeCoroutine = StartCoroutine(FadeInIntroCardsRoutine());
+        _introFadeCoroutine = StartCoroutine(FadeInCurrentSlideRoutine());
     }
 
-    private IEnumerator FadeInIntroCardsRoutine()
+    private IEnumerator FadeInCurrentSlideRoutine()
     {
-        if (_introCardGroups == null) yield break;
+        if (_introSlideGroup == null) yield break;
 
-        for (int i = 0; i < _introCardGroups.Length; i++)
+        _introSlideGroup.alpha = 0f;
+        float t = 0f;
+        float dur = 0.25f;
+        while (t < dur)
         {
-            if (_introCardGroups[i] != null)
-                _introCardGroups[i].alpha = 0f;
+            t += Time.unscaledDeltaTime;
+            _introSlideGroup.alpha = Mathf.Clamp01(t / dur);
+            yield return null;
         }
-
-        for (int i = 0; i < _introCardGroups.Length; i++)
-        {
-            CanvasGroup cg = _introCardGroups[i];
-            if (cg == null) continue;
-
-            float t = 0f;
-            float dur = 0.35f;
-            while (t < dur)
-            {
-                t += Time.unscaledDeltaTime;
-                cg.alpha = Mathf.Clamp01(t / dur);
-                yield return null;
-            }
-            cg.alpha = 1f;
-            yield return new WaitForSecondsRealtime(0.18f);
-        }
+        _introSlideGroup.alpha = 1f;
     }
 
     public void StartOrResumeGame()
@@ -933,7 +994,7 @@ public class GameManager : MonoBehaviour
 
     private void BuildIntroStoryPanel(Transform canvasTransform, Font font)
     {
-        // Fondo ilustrado oscurecido para que la ficha clínica resalte sobre la clínica magenta
+        // Fondo ilustrado oscurecido para que la diapositiva clínica resalte sobre la recepción magenta
         RectTransform root = CreatePanel(canvasTransform, "Panel_HistoriaIntro",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, new Color(0.05f, 0.03f, 0.09f, 0.96f));
@@ -948,82 +1009,64 @@ public class GameManager : MonoBehaviour
             bgImg.preserveAspect = false;
         }
 
-        // Carpeta / Ficha Clínica central
+        // Tarjeta / Ficha Clínica central de la diapositiva actual
         RectTransform dossier = CreatePanel(root, "Ficha_InformeEmergencia",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(1140f, 760f), new Color(0.08f, 0.06f, 0.14f, 0.95f));
+            Vector2.zero, new Vector2(1040f, 600f), new Color(0.08f, 0.06f, 0.14f, 0.96f));
 
-        // Borde superior turquesa/rojo tipo alerta médica
-        CreatePanel(dossier, "Header_Stripe",
+        RectTransform stripe = CreatePanel(dossier, "Header_Stripe",
             new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
-            Vector2.zero, new Vector2(0f, 8f), new Color(0.95f, 0.24f, 0.45f, 1f));
+            Vector2.zero, new Vector2(0f, 8f), new Color(0.96f, 0.35f, 0.55f, 1f));
+        _introAccentStripe = stripe.GetComponent<Image>();
 
-        CreateText(dossier, "Intro_Badge", font, 18, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(440f, 30f),
-            new Color(1f, 0.42f, 0.58f)).text = "EXPEDIENTE CLÍNICO #04 — ALERTA DE EMERGENCIA";
+        // Contenido animado de cada diapositiva
+        GameObject slideContent = new GameObject("Slide_Content");
+        slideContent.transform.SetParent(dossier, false);
+        RectTransform contentRect = slideContent.AddComponent<RectTransform>();
+        contentRect.anchorMin = Vector2.zero;
+        contentRect.anchorMax = Vector2.one;
+        contentRect.offsetMin = Vector2.zero;
+        contentRect.offsetMax = Vector2.zero;
+        _introSlideGroup = slideContent.AddComponent<CanvasGroup>();
 
-        CreateText(dossier, "Intro_Title", font, 42, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -84f), new Vector2(-60f, 54f),
-            new Color(0.38f, 1f, 0.88f)).text = "INFORME DE EMERGENCIA";
+        _introStepText = CreateText(contentRect, "Intro_Step", font, 19, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -46f), new Vector2(-60f, 32f),
+            new Color(0.96f, 0.35f, 0.55f));
 
-        _introCardGroups = new CanvasGroup[3];
+        _introSlideTitleText = CreateText(contentRect, "Intro_SlideTitle", font, 40, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -104f), new Vector2(-80f, 54f),
+            Color.white);
 
-        // 1. ¿QUÉ PASÓ?
-        _introCardGroups[0] = CreateIntroStoryCard(
-            dossier, font, "Card_1_QuePaso", new Vector2(0f, 150f),
-            new Color(0.96f, 0.35f, 0.55f),
-            "1. ¿QUÉ PASÓ? — EL INCIDENTE EN EL QUIRÓFANO",
-            "¡Alerta en la Clínica Veterinaria! Un frasco de suero experimental se rompió en el Quirófano y su neblina violeta alteró a los gatos internados, volviéndolos agresivos."
-        );
+        _introSlideBodyText = CreateText(contentRect, "Intro_SlideBody", font, 25, FontStyle.Normal, TextAnchor.MiddleLeft,
+            new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0f, 15f), new Vector2(-140f, -250f),
+            new Color(0.93f, 0.95f, 0.99f));
 
-        // 2. TU MISIÓN
-        _introCardGroups[1] = CreateIntroStoryCard(
-            dossier, font, "Card_2_Mision", new Vector2(0f, -15f),
-            new Color(0.38f, 1f, 0.88f),
-            "2. TU MISIÓN — SIN LASTIMAR A NADIE",
-            "Apuntá con [Click Derecho] y dispará dardos sedantes con [Click Izquierdo] para dormir a los gatos corruptos (incluido el Gato Jefe del Quirófano). Si se te enciman, empujalos con [Barra Espaciadora] y abrí todas las jaulas con [E]."
-        );
+        // Botón principal: en slide 1 y 2 dice "SIGUIENTE ->", en slide 3 dice "¡COMENZAR RESCATE!"
+        RectTransform nextBtnRect = CreatePanel(dossier, "Btn_SiguienteIntro",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(-115f, -225f), new Vector2(390f, 62f), new Color(0.20f, 0.82f, 0.68f));
+        Button nextBtn = nextBtnRect.gameObject.AddComponent<Button>();
+        nextBtn.transition = Selectable.Transition.None;
+        nextBtn.targetGraphic = nextBtnRect.GetComponent<Image>();
+        nextBtn.onClick.AddListener(AdvanceIntroSlide);
+        nextBtnRect.gameObject.AddComponent<MenuButtonHover>();
+        _introNextBtnLabel = CreateText(nextBtnRect, "Label", font, 21, FontStyle.Bold, TextAnchor.MiddleCenter,
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white);
 
-        // 3. TUS COMPAÑEROS
-        _introCardGroups[2] = CreateIntroStoryCard(
-            dossier, font, "Card_3_Companeros", new Vector2(0f, -180f),
-            new Color(1f, 0.85f, 0.35f),
-            "3. TUS COMPAÑEROS — DIBU Y CUTI",
-            "Dibu y Cuti están encerrados en la clínica. Libéralos para que te ayuden a distraer y frenar a los corruptos (si se corrompen, sedalos para curarlos). Usá [Q] si necesitás un botiquín."
-        );
-
-        // Botones inferiores: "¡COMENZAR RESCATE!" y "SALTAR"
-        CreateButton(dossier, "Btn_ComenzarRescate", font, "▶  ¡COMENZAR RESCATE! (Enter)",
-            new Vector2(-140f, -315f), new Vector2(380f, 60f), new Color(0.20f, 0.82f, 0.68f), StartOrResumeGame);
-
-        CreateButton(dossier, "Btn_SaltarIntro", font, "SALTAR  ⏭",
-            new Vector2(220f, -315f), new Vector2(210f, 60f), new Color(0.25f, 0.24f, 0.36f), StartOrResumeGame);
+        // Botón "SALTAR": salta directo al juego (se oculta en la diapositiva 3 porque ahí ya está "¡Comenzar Rescate!")
+        RectTransform skipBtnRect = CreatePanel(dossier, "Btn_SaltarIntro",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(225f, -225f), new Vector2(210f, 62f), new Color(0.25f, 0.24f, 0.36f));
+        Button skipBtn = skipBtnRect.gameObject.AddComponent<Button>();
+        skipBtn.transition = Selectable.Transition.None;
+        skipBtn.targetGraphic = skipBtnRect.GetComponent<Image>();
+        skipBtn.onClick.AddListener(StartOrResumeGame);
+        skipBtnRect.gameObject.AddComponent<MenuButtonHover>();
+        CreateText(skipBtnRect, "Label", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white).text = "SALTAR  ⏭";
+        _introSkipButtonObj = skipBtnRect.gameObject;
 
         _introStoryPanel.SetActive(false);
-    }
-
-    private CanvasGroup CreateIntroStoryCard(Transform parent, Font font, string name, Vector2 anchoredPos, Color accentColor, string header, string body)
-    {
-        RectTransform card = CreatePanel(parent, name,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            anchoredPos, new Vector2(1020f, 145f), new Color(0.13f, 0.11f, 0.22f, 0.96f));
-
-        CanvasGroup cg = card.gameObject.AddComponent<CanvasGroup>();
-
-        // Barra lateral de acento
-        CreatePanel(card, "Accent",
-            new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f),
-            Vector2.zero, new Vector2(8f, 0f), accentColor);
-
-        CreateText(card, "Header", font, 21, FontStyle.Bold, TextAnchor.MiddleLeft,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(12f, -26f), new Vector2(-56f, 32f),
-            accentColor).text = header;
-
-        CreateText(card, "Body", font, 20, FontStyle.Normal, TextAnchor.UpperLeft,
-            new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(12f, -18f), new Vector2(-56f, -54f),
-            new Color(0.93f, 0.95f, 0.99f)).text = body;
-
-        return cg;
     }
 
     private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
