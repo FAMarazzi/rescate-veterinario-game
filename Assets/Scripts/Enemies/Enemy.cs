@@ -58,7 +58,9 @@ public abstract class Enemy : Entity
     protected float _baseMoveSpeed = 4.2f;
     private float _stunTimer;
     private float _retaliateCheckTimer;
+    private float _repathTimer;
     private Vector3 _lastFramePos;
+    private static PhysicsMaterial _sharedFrictionlessMat;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
@@ -80,15 +82,37 @@ public abstract class Enemy : Entity
         _rb.mass = 0.05f; // livianito para que un gatito nunca pueda empujar a la veterinaria
         _rb.linearDamping = 6f; // que el empujón del melee frene rápido y no patine infinito
 
+        if (_agent != null)
+        {
+            _agent.radius = Mathf.Min(_agent.radius, 0.28f);
+            _agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+        }
+
         // Ignoro el choque físico directo entre el cápsula del enemigo y la del jugador para que al atacar no la mueva,
         // pero sigue detectando los dardos (OnTriggerEnter) y el melee (OverlapSphere)
         PlayerController player = FindFirstObjectByType<PlayerController>();
         Collider myCol = GetComponent<Collider>();
-        if (player != null && myCol != null)
+        if (myCol != null)
         {
-            Collider playerCol = player.GetComponent<Collider>();
-            if (playerCol != null)
-                Physics.IgnoreCollision(myCol, playerCol, true);
+            if (_sharedFrictionlessMat == null)
+            {
+                _sharedFrictionlessMat = new PhysicsMaterial("EnemyFrictionless")
+                {
+                    dynamicFriction = 0f,
+                    staticFriction = 0f,
+                    bounciness = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum
+                };
+            }
+            myCol.material = _sharedFrictionlessMat;
+
+            if (player != null)
+            {
+                Collider playerCol = player.GetComponent<Collider>();
+                if (playerCol != null)
+                    Physics.IgnoreCollision(myCol, playerCol, true);
+            }
         }
 
         // Estiro la cápsula en Y para que los dardos (que salen a la altura del rifle) no les pasen por arriba a los animalitos petisos
@@ -358,11 +382,24 @@ public abstract class Enemy : Entity
             return;
         }
 
-        // Mientras lo corro, le digo al NavMeshAgent a dónde ir
+        // Mientras lo corro, le digo al NavMeshAgent a dónde ir (sin resetear el path en cada frame)
         if (_agent.isOnNavMesh)
         {
             _agent.isStopped = false;
-            _agent.SetDestination(_target.position);
+            _repathTimer -= Time.deltaTime;
+            if (_repathTimer <= 0f)
+            {
+                _repathTimer = 0.12f;
+                _agent.SetDestination(_target.position);
+            }
+
+            // Si no hay camino completo hacia el jugador (quedó del otro lado de una pared sin ruta) y ya llegó al borde, vuelvo a Idle para que no se quede trabado contra la pared
+            if (!_agent.pathPending && _agent.pathStatus == NavMeshPathStatus.PathPartial && _agent.remainingDistance < 0.45f && !HasLineOfSightToTarget())
+            {
+                ChangeState(State.Idle);
+                return;
+            }
+
             // Mantengo la velocidad física en cero mientras se mueve con NavMesh para que no empuje al jugador con fuerza infinita
             if (_rb != null && !_rb.isKinematic)
                 _rb.linearVelocity = Vector3.Lerp(_rb.linearVelocity, Vector3.zero, 10f * Time.deltaTime);
@@ -411,6 +448,8 @@ public abstract class Enemy : Entity
     {
         if (_currentState == newState) return;
         _currentState = newState;
+        if (newState == State.Chase)
+            _repathTimer = 0f;
     }
 
     // Si me pegan un dardo desde lejos mientras estaba en Idle, me despierto y voy a buscar al jugador

@@ -41,7 +41,76 @@ public class Ally : Entity
     [SerializeField] private float _ringRadius = 0.65f;
     [SerializeField] private float _ringWidth = 0.06f;
 
+    [Header("Escala al Liberarse")]
+    [Tooltip("Si es mayor a 0, fuerza esta escala uniforme al salir de la jaula. En 0 conserva su tamaño real en escena/prefab.")]
+    [SerializeField] private float _releaseScale = 0f;
+
     public bool IsCorrupted => _isCorrupted;
+
+    /// <summary>
+    /// Aplica una escala uniforme al liberarse de la jaula solo si se configuró un valor mayor a 0
+    /// en la jaula o en este aliado; si ambos están en 0, conserva su escala real en el mundo.
+    /// </summary>
+    public void ApplyReleaseScale(float cageOverrideScale = 0f)
+    {
+        float targetScale = cageOverrideScale > 0f ? cageOverrideScale : _releaseScale;
+        if (targetScale > 0f)
+            transform.localScale = Vector3.one * targetScale;
+    }
+
+    /// <summary>
+    /// Mide los bounds reales del modelo 3D y lo apoya exactamente al ras del piso (transform.position.y),
+    /// sin importar si el pivote del FBX está en las patas (Dibu) o en el centro del cuerpo (Cuti).
+    /// </summary>
+    public void SnapModelToFloor()
+    {
+        Transform model = GetModelTransform();
+        if (model == null) return;
+
+        Renderer[] rends = model.GetComponentsInChildren<Renderer>(true);
+        bool found = false;
+        float minY = float.MaxValue;
+        for (int i = 0; i < rends.Length; i++)
+        {
+            if (rends[i] == null || !rends[i].enabled) continue;
+            if (rends[i] is LineRenderer) continue;
+            if (rends[i].gameObject.name.StartsWith("HB_")) continue;
+
+            if (rends[i].bounds.min.y < minY)
+            {
+                minY = rends[i].bounds.min.y;
+                found = true;
+            }
+        }
+
+        if (found)
+        {
+            float deltaY = transform.position.y - minY;
+            model.position += Vector3.up * deltaY;
+        }
+
+        _baseModelLocalPos = model.localPosition;
+        _hasBaseModelPos = true;
+    }
+
+    private Transform GetModelTransform()
+    {
+        if (_modelTransform != null) return _modelTransform;
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            Transform child = transform.GetChild(i);
+            if (child != null && child.name != "HealthBar_Root" && child.name != "AroAliado")
+            {
+                _modelTransform = child;
+                break;
+            }
+        }
+        return _modelTransform;
+    }
+
+    private Transform _modelTransform;
+    private Vector3 _baseModelLocalPos;
+    private bool _hasBaseModelPos;
 
     private bool _isCorrupted = false;
     private NavMeshAgent _agent;
@@ -96,11 +165,20 @@ public class Ally : Entity
     {
         if (!ActiveAllies.Contains(this))
             ActiveAllies.Add(this);
+
+        if (_ringRenderer != null)
+        {
+            _ringRenderer.enabled = true;
+            UpdateGreenRingPositions();
+        }
     }
 
     private void OnDisable()
     {
         ActiveAllies.Remove(this);
+
+        if (_ringRenderer != null)
+            _ringRenderer.enabled = false;
     }
 
     private void Start()
@@ -208,12 +286,20 @@ public class Ally : Entity
                 : 0f;
             _animator.SetFloat(SpeedHash, speed);
         }
-        else if (transform.childCount > 0)
+        else
         {
-            Transform model = transform.GetChild(0);
-            bool moving = _agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped && _agent.velocity.sqrMagnitude > 0.05f;
-            float yHop = moving ? Mathf.Abs(Mathf.Sin(Time.time * 12f)) * 0.08f : 0f;
-            model.localPosition = new Vector3(model.localPosition.x, 0.1f + yHop, model.localPosition.z);
+            Transform model = GetModelTransform();
+            if (model != null)
+            {
+                if (!_hasBaseModelPos)
+                {
+                    _baseModelLocalPos = model.localPosition;
+                    _hasBaseModelPos = true;
+                }
+                bool moving = _agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped && _agent.velocity.sqrMagnitude > 0.05f;
+                float yHop = moving ? Mathf.Abs(Mathf.Sin(Time.time * 12f)) * 0.08f : 0f;
+                model.localPosition = _baseModelLocalPos + transform.InverseTransformVector(Vector3.up * yHop);
+            }
         }
     }
 
@@ -331,15 +417,16 @@ public class Ally : Entity
     {
         GameObject ringObj = new GameObject("AroAliado");
         ringObj.transform.SetParent(transform, false);
-        ringObj.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+        ringObj.transform.localPosition = Vector3.zero;
 
         _ringRenderer = ringObj.AddComponent<LineRenderer>();
-        _ringRenderer.useWorldSpace = false;
+        _ringRenderer.useWorldSpace = true;
         _ringRenderer.loop = true;
         _ringRenderer.startWidth = _ringWidth;
         _ringRenderer.endWidth = _ringWidth;
         _ringRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _ringRenderer.receiveShadows = false;
+        _ringRenderer.enabled = enabled;
 
         Shader sh = Shader.Find("Sprites/Default");
         if (sh != null)
@@ -348,12 +435,25 @@ public class Ally : Entity
         _ringRenderer.startColor = _allyRingColor;
         _ringRenderer.endColor = _allyRingColor;
 
-        int segments = 24;
-        _ringRenderer.positionCount = segments;
+        _ringRenderer.positionCount = 24;
+        UpdateGreenRingPositions();
+    }
+
+    private void LateUpdate()
+    {
+        if (_ringRenderer != null && _ringRenderer.enabled)
+            UpdateGreenRingPositions();
+    }
+
+    private void UpdateGreenRingPositions()
+    {
+        if (_ringRenderer == null) return;
+        int segments = _ringRenderer.positionCount;
+        Vector3 center = new Vector3(transform.position.x, transform.position.y + 0.05f, transform.position.z);
         for (int i = 0; i < segments; i++)
         {
             float angle = (i / (float)segments) * Mathf.PI * 2f;
-            _ringRenderer.SetPosition(i, new Vector3(Mathf.Cos(angle) * _ringRadius, 0f, Mathf.Sin(angle) * _ringRadius));
+            _ringRenderer.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * _ringRadius, 0f, Mathf.Sin(angle) * _ringRadius));
         }
     }
 

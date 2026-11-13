@@ -88,6 +88,22 @@ public class PlayerController : Entity
         _rb = GetComponent<Rigidbody>();
         // Congelo rotación y también la altura (Y) para que al chocar contra cápsulas de enemigos no salga volando por el aire
         _rb.constraints = RigidbodyConstraints.FreezeRotation | RigidbodyConstraints.FreezePositionY;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // Material sin fricción para patinar/deslizar suave contra paredes y marcos de puertas sin trabarse
+        PhysicsMaterial frictionless = new PhysicsMaterial("PlayerFrictionless")
+        {
+            dynamicFriction = 0f,
+            staticFriction = 0f,
+            bounciness = 0f,
+            frictionCombine = PhysicsMaterialCombine.Minimum,
+            bounceCombine = PhysicsMaterialCombine.Minimum
+        };
+        foreach (Collider col in GetComponents<Collider>())
+        {
+            if (!col.isTrigger)
+                col.material = frictionless;
+        }
         _cam = Camera.main;
         if (_shootPoint == null) _shootPoint = transform; // si no puse punto de disparo, salen desde el centro
         if (_animator == null) _animator = GetComponentInChildren<Animator>();

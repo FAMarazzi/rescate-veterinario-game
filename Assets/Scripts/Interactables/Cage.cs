@@ -27,6 +27,8 @@ public class Cage : MonoBehaviour, IInteractable
     [Tooltip("Prefab del gatito genérico que sale corriendo a la puerta cuando la jaula no tiene a Dibu ni Cuti")]
     [SerializeField] private GameObject _rescuedKittenPrefab;
     [SerializeField] private Transform _spawnPoint; // punto adelante de la jaula donde sale el gatito
+    [Tooltip("Si es mayor a 0, ajusta el tamaño uniforme de Dibu/Cuti al salir de esta jaula (0 = conserva el tamaño que ya tiene en escena/prefab)")]
+    [SerializeField] private float _releasedAllyScale = 0f;
 
     [Header("Feedback Visual")]
     [SerializeField] private string _promptMessage = "[E] Liberar gatito";
@@ -111,9 +113,32 @@ public class Cage : MonoBehaviour, IInteractable
 
         if (_cagedAllyInScene != null)
         {
-            // Lo saco de adentro de la jaula, lo pongo en el piso y le prendo el NavMeshAgent y el script Ally
-            _cagedAllyInScene.transform.SetParent(null);
-            exitPos.y = _cagedAllyInScene.transform.position.y;
+            // Lo saco de adentro de la jaula conservando su tamaño real (o usando el override del Inspector) y enderezando la rotación
+            _cagedAllyInScene.transform.SetParent(null, true);
+            _cagedAllyInScene.ApplyReleaseScale(_releasedAllyScale);
+
+            // Si la jaula estaba rotada (ej: Consultorio2_Jaula a -90°), conservo la orientación derecha que ya tenía el Model hijo
+            bool wasTiltedByCage = Vector3.Angle(_cagedAllyInScene.transform.up, Vector3.up) > 15f;
+            Transform modelChild = (wasTiltedByCage && _cagedAllyInScene.transform.childCount > 0)
+                ? _cagedAllyInScene.transform.GetChild(0)
+                : null;
+            if (modelChild != null && modelChild.name == "HealthBar_Root")
+                modelChild = null;
+            Quaternion savedModelWorldRot = modelChild != null ? modelChild.rotation : Quaternion.identity;
+
+            Vector3 lookDir = player.transform.position - transform.position;
+            lookDir.y = 0f;
+            _cagedAllyInScene.transform.rotation = lookDir.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(lookDir.normalized)
+                : Quaternion.identity;
+
+            if (modelChild != null)
+                modelChild.rotation = savedModelWorldRot;
+
+            exitPos.y = player.transform.position.y;
+            if (NavMesh.SamplePosition(exitPos, out NavMeshHit navHit, 3.5f, NavMesh.AllAreas))
+                exitPos = navHit.position;
+
             _cagedAllyInScene.transform.position = exitPos;
 
             NavMeshAgent agent = _cagedAllyInScene.GetComponent<NavMeshAgent>();
@@ -123,11 +148,18 @@ public class Cage : MonoBehaviour, IInteractable
                 agent.Warp(exitPos);
             }
 
+            _cagedAllyInScene.SnapModelToFloor();
             _cagedAllyInScene.enabled = true;
         }
         else if (_allyPrefabToSpawn != null)
         {
-            Instantiate(_allyPrefabToSpawn, exitPos, Quaternion.identity);
+            GameObject spawnedObj = Instantiate(_allyPrefabToSpawn, exitPos, Quaternion.identity);
+            Ally spawnedAlly = spawnedObj.GetComponent<Ally>();
+            if (spawnedAlly != null)
+            {
+                spawnedAlly.ApplyReleaseScale(_releasedAllyScale);
+                spawnedAlly.SnapModelToFloor();
+            }
         }
         else
         {

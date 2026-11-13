@@ -128,9 +128,14 @@ MonoBehaviour:
   _attackRange: 1.6
   _attackDamage: 20
   _attackCooldown: 0.8
+  _corruptTint: {r: 0.68, g: 0.22, b: 0.92, a: 1}
+  _corruptMoveSpeed: 3.8
+  _corruptAttackDamage: 8
   _allyRingColor: {r: 0.2, g: 0.95, b: 0.35, a: 1}
+  _corruptRingColor: {r: 0.85, g: 0.18, b: 0.95, a: 1}
   _ringRadius: 0.6
   _ringWidth: 0.06
+  _releaseScale: 0
 --- !u!1001 &9152105550913048236
 PrefabInstance:
   m_ObjectHideFlags: 0
