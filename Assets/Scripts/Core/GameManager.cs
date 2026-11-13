@@ -2,15 +2,16 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/11/2026, 7:12:00 PM
- * @Description: Controlador general de la partida (Singleton), Pantalla de Título (Jugar, Opciones con volumen,
- *   Créditos, Salir) y HUD en pantalla. Se suscribe mediante delegados/eventos (Action) al PlayerController,
- *   a todos los Enemy y a las Cage para actualizar barras de vida, contadores, notificaciones y Victoria/Derrota.
+ * @LastEditTime: 11/12/2026, 6:57:00 PM
+ * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
+ *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
+ *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
  * @Email: federicoandresmarazzi@gmail.com
  */
 
 using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -22,7 +23,27 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
+    // Permite que PlayerController sepa si hay algún menú abierto para no disparar ni golpear al hacer clic en botones
+    public static bool IsMenuOpen =>
+        Instance != null && (
+            (Instance._titleMenuPanel != null && Instance._titleMenuPanel.activeSelf) ||
+            (Instance._pauseMenuPanel != null && Instance._pauseMenuPanel.activeSelf) ||
+            (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf)
+        );
+
     private static bool _hasShownTitleThisSession = false;
+
+    [Header("Sprites del Menú de Inicio (Assets/MainMenu)")]
+    [SerializeField] private Sprite _menuBackgroundSprite;
+    [SerializeField] private Sprite _menuLogoSprite;
+    [SerializeField] private Sprite _btnJugarSprite;
+    [SerializeField] private Sprite _btnOpcionesSprite;
+    [SerializeField] private Sprite _btnCreditosSprite;
+    [SerializeField] private Sprite _btnSalirSprite;
+
+    [Header("Sprites de Pantalla de Créditos (Assets/Creditos)")]
+    [SerializeField] private Sprite _creditsBackgroundSprite;
+    [SerializeField] private Sprite _btnVolverSprite;
 
     private PlayerController _player;
     private int _totalEnemies;
@@ -49,11 +70,17 @@ public class GameManager : MonoBehaviour
     private Text _endSubtitleText;
     private Image _endPanelBg;
 
-    // Pantalla de Título / Menú Principal (Jugar, Opciones con Slider de Sonido, Créditos, Salir)
+    // Pantalla de Título / Menú de Inicio Ilustrado
     private GameObject _titleMenuPanel;
     private GameObject _optionsSubPanel;
     private GameObject _creditsSubPanel;
     private Text _volumeLabelText;
+    private Slider _titleVolumeSlider;
+
+    // Menú de Pausa Independiente (al apretar ESC durante la partida)
+    private GameObject _pauseMenuPanel;
+    private Text _pauseVolumeLabelText;
+    private Slider _pauseVolumeSlider;
 
     private Coroutine _notifCoroutine;
 
@@ -77,6 +104,8 @@ public class GameManager : MonoBehaviour
         }
         Instance = this;
         Time.timeScale = 1f;
+
+        LoadMenuSpritesIfNeeded();
     }
 
     private void Start()
@@ -85,7 +114,7 @@ public class GameManager : MonoBehaviour
         BindSceneEntities();
         UpdateAllHUD();
 
-        // Al arrancar el juego por primera vez mostramos la Pantalla de Título (Jugar, Opciones, Créditos, Salir)
+        // Al arrancar el juego por primera vez mostramos el Menú de Inicio ilustrado
         if (!_hasShownTitleThisSession)
         {
             _hasShownTitleThisSession = true;
@@ -101,20 +130,100 @@ public class GameManager : MonoBehaviour
     {
         if (Keyboard.current == null) return;
 
-        // Tecla ESC: abre/cierra la Pantalla de Título y Opciones de Sonido
+        // Tecla ESC: si estamos en el Menú de Inicio no hace nada; si estamos jugando abre/cierra el Menú de Pausa
         if (Keyboard.current.escapeKey.wasPressedThisFrame && !_gameEnded)
         {
             if (_titleMenuPanel != null && _titleMenuPanel.activeSelf)
-                StartOrResumeGame();
+            {
+                if (_optionsSubPanel != null && _optionsSubPanel.activeSelf)
+                    _optionsSubPanel.SetActive(false);
+                else if (_creditsSubPanel != null && _creditsSubPanel.activeSelf)
+                    _creditsSubPanel.SetActive(false);
+                return;
+            }
+
+            if (_pauseMenuPanel != null && _pauseMenuPanel.activeSelf)
+                ResumeFromPause();
             else
-                OpenTitleMenu();
+                OpenPauseMenu();
         }
 
-        // Tecla R para reiniciar el nivel rápidamente
-        if (Keyboard.current.rKey.wasPressedThisFrame && (_titleMenuPanel == null || !_titleMenuPanel.activeSelf))
+        // Tecla R para reiniciar el nivel rápidamente cuando no hay menús abiertos
+        if (Keyboard.current.rKey.wasPressedThisFrame && !IsMenuOpen)
         {
             RestartLevel();
         }
+    }
+
+    // Carga los PNGs desde Assets/MainMenu y Assets/Creditos tanto en Editor como desde archivo
+    private void LoadMenuSpritesIfNeeded()
+    {
+        if (_menuBackgroundSprite == null)
+            _menuBackgroundSprite = LoadSpriteFromAssetFolder("MainMenu", "Recepción veterinaria bajo luces magenta.png");
+        if (_menuLogoSprite == null)
+            _menuLogoSprite = LoadSpriteFromAssetFolder("MainMenu", "Logo de Rescate Veterinario.png");
+        if (_btnJugarSprite == null)
+            _btnJugarSprite = LoadSpriteFromAssetFolder("MainMenu", "boton_jugar.png");
+        if (_btnOpcionesSprite == null)
+            _btnOpcionesSprite = LoadSpriteFromAssetFolder("MainMenu", "boton_opciones.png");
+        if (_btnCreditosSprite == null)
+            _btnCreditosSprite = LoadSpriteFromAssetFolder("MainMenu", "boton_creditos.png");
+        if (_btnSalirSprite == null)
+            _btnSalirSprite = LoadSpriteFromAssetFolder("MainMenu", "boton_salir.png");
+
+        if (_creditsBackgroundSprite == null)
+            _creditsBackgroundSprite = LoadSpriteFromAssetFolder("Creditos", "Fondo Créditos del Rescate Veterinario.png");
+        if (_btnVolverSprite == null)
+            _btnVolverSprite = LoadSpriteFromAssetFolder("Creditos", "Botón de papel rasgado “Volver”.png");
+    }
+
+    private Sprite LoadSpriteFromAssetFolder(string folderName, string fileName)
+    {
+        string assetPath = "Assets/" + folderName + "/" + fileName;
+
+#if UNITY_EDITOR
+        // Primero verificamos si podemos cargarlo como Sprite desde AssetDatabase
+        Sprite sp = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+        if (sp != null && sp.texture != null && sp.texture.isReadable)
+            return sp;
+
+        Texture2D tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+        if (tex != null && tex.isReadable)
+        {
+            return Sprite.Create(
+                tex,
+                new Rect(0f, 0f, tex.width, tex.height),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect
+            );
+        }
+#endif
+
+        // Fallback directo leyendo los bytes del PNG en disco para que siempre sea readable y nítido al 100%
+        string fullPath = Path.Combine(Application.dataPath, folderName, fileName);
+        if (File.Exists(fullPath))
+        {
+            byte[] bytes = File.ReadAllBytes(fullPath);
+            Texture2D diskTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (diskTex.LoadImage(bytes, false))
+            {
+                diskTex.name = Path.GetFileNameWithoutExtension(fileName);
+                diskTex.wrapMode = TextureWrapMode.Clamp;
+                diskTex.filterMode = FilterMode.Bilinear;
+                return Sprite.Create(
+                    diskTex,
+                    new Rect(0f, 0f, diskTex.width, diskTex.height),
+                    new Vector2(0.5f, 0.5f),
+                    100f,
+                    0,
+                    SpriteMeshType.FullRect
+                );
+            }
+        }
+
+        return null;
     }
 
     private void BindSceneEntities()
@@ -128,8 +237,8 @@ public class GameManager : MonoBehaviour
             _player.OnOutOfLives += HandlePlayerOutOfLives;
         }
 
-        // Suscripción a todos los enemigos de la clínica
-        Enemy[] enemies = FindObjectsByType<Enemy>(FindObjectsSortMode.None);
+        // Suscripción a todos los enemigos de la clínica (incluyendo los que están desactivados en el EnemyPool)
+        Enemy[] enemies = FindObjectsByType<Enemy>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         _totalEnemies = enemies.Length;
         _curedEnemies = 0;
         _bossCured = _totalEnemies == 0;
@@ -347,20 +456,22 @@ public class GameManager : MonoBehaviour
         _endTitleText.text = title;
         _endTitleText.color = victory ? new Color(0.35f, 1f, 0.55f) : new Color(1f, 0.35f, 0.35f);
         _endSubtitleText.text = subtitle;
-        _endPanelBg.color = victory ? new Color(0.06f, 0.16f, 0.12f, 0.92f) : new Color(0.18f, 0.06f, 0.08f, 0.92f);
+        _endPanelBg.color = victory ? new Color(0.06f, 0.16f, 0.12f, 0.94f) : new Color(0.18f, 0.06f, 0.08f, 0.94f);
     }
 
     // =========================================================
-    // PANTALLA DE TÍTULO, OPCIONES (SONIDO), CRÉDITOS Y SALIR
+    // MENÚ DE INICIO ILUSTRADO Y MENÚ DE PAUSA INDEPENDIENTE
     // =========================================================
     public void OpenTitleMenu()
     {
         if (_titleMenuPanel == null) return;
         if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
+        if (_pauseMenuPanel != null) _pauseMenuPanel.SetActive(false);
 
         _titleMenuPanel.SetActive(true);
-        _optionsSubPanel.SetActive(false);
-        _creditsSubPanel.SetActive(false);
+        // Arrancamos con los subpaneles cerrados para que luzca limpio el fondo de recepción magenta
+        if (_optionsSubPanel != null) _optionsSubPanel.SetActive(false);
+        if (_creditsSubPanel != null) _creditsSubPanel.SetActive(false);
         Time.timeScale = 0f;
     }
 
@@ -368,9 +479,25 @@ public class GameManager : MonoBehaviour
     {
         if (_titleMenuPanel != null)
             _titleMenuPanel.SetActive(false);
+        if (_pauseMenuPanel != null)
+            _pauseMenuPanel.SetActive(false);
 
         Time.timeScale = 1f;
         ShowNotification("¡Rescatá la clínica! Sedá a los gatos corruptos y abrí todas las jaulas", new Color(0.75f, 0.95f, 1f));
+    }
+
+    public void OpenPauseMenu()
+    {
+        if (_pauseMenuPanel == null) return;
+        _pauseMenuPanel.SetActive(true);
+        Time.timeScale = 0f;
+    }
+
+    public void ResumeFromPause()
+    {
+        if (_pauseMenuPanel != null)
+            _pauseMenuPanel.SetActive(false);
+        Time.timeScale = 1f;
     }
 
     private void ToggleOptionsPanel()
@@ -396,12 +523,27 @@ public class GameManager : MonoBehaviour
         else
             AudioListener.volume = value;
 
+        string text = $"Volumen General: {Mathf.RoundToInt(value * 100f)}%";
         if (_volumeLabelText != null)
-            _volumeLabelText.text = $"Volumen General: {Mathf.RoundToInt(value * 100f)}%";
+            _volumeLabelText.text = text;
+        if (_pauseVolumeLabelText != null)
+            _pauseVolumeLabelText.text = text;
+
+        if (_titleVolumeSlider != null && !Mathf.Approximately(_titleVolumeSlider.value, value))
+            _titleVolumeSlider.SetValueWithoutNotify(value);
+        if (_pauseVolumeSlider != null && !Mathf.Approximately(_pauseVolumeSlider.value, value))
+            _pauseVolumeSlider.SetValueWithoutNotify(value);
     }
 
     public void RestartLevel()
     {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public void ReturnToMainMenu()
+    {
+        _hasShownTitleThisSession = false;
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
@@ -416,7 +558,7 @@ public class GameManager : MonoBehaviour
     }
 
     // =========================================================
-    // CONSTRUCCIÓN PROCEDURAL DEL HUD Y PANTALLA DE TÍTULO
+    // CONSTRUCCIÓN DEL HUD, MENÚ DE INICIO Y MENÚ DE PAUSA
     // =========================================================
     private void BuildHUD()
     {
@@ -475,7 +617,7 @@ public class GameManager : MonoBehaviour
         CreateText(canvasObj.transform, "Controls_Hint", defaultFont, 17, FontStyle.Normal, TextAnchor.LowerLeft,
             new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 20f), new Vector2(1150f, 32f),
             new Color(0.85f, 0.92f, 1f, 0.8f)).text =
-            "WASD: Mover  |  Click Der + Izq: Dardo Sedante  |  Espacio: Empujón Melee  |  E: Jaula / Botiquín  |  Q: Curarse  |  R: Reiniciar  |  ESC: Menú";
+            "WASD: Mover  |  Click Der + Izq: Dardo Sedante  |  Espacio: Empujón Melee  |  E: Jaula / Botiquín  |  Q: Curarse  |  R: Reiniciar  |  ESC: Pausa";
 
         // 2. PANEL SUPERIOR DERECHO: OBJETIVOS DE LA MISIÓN
         RectTransform rightPanel = CreatePanel(canvasObj.transform, "Panel_Mision",
@@ -521,97 +663,211 @@ public class GameManager : MonoBehaviour
         CreateButton(endRect, "Btn_Restart", defaultFont, "REINICIAR NIVEL (Tecla R)",
             new Vector2(-155f, -120f), new Vector2(280f, 58f), new Color(0.18f, 0.65f, 0.42f), RestartLevel);
 
-        CreateButton(endRect, "Btn_Menu", defaultFont, "PANTALLA DE TÍTULO",
-            new Vector2(155f, -120f), new Vector2(260f, 58f), new Color(0.25f, 0.42f, 0.68f), OpenTitleMenu);
+        CreateButton(endRect, "Btn_Menu", defaultFont, "MENÚ PRINCIPAL",
+            new Vector2(155f, -120f), new Vector2(260f, 58f), new Color(0.25f, 0.42f, 0.68f), ReturnToMainMenu);
 
         _endScreenPanel.SetActive(false);
 
-        // 5. PANTALLA DE TÍTULO COMPLETA (JUGAR, OPCIONES CON SLIDER DE VOLUMEN, CRÉDITOS, SALIR)
+        // 5. MENÚ DE PAUSA INDEPENDIENTE (ESC)
+        BuildPauseMenu(canvasObj.transform, defaultFont);
+
+        // 6. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
         BuildTitleMenu(canvasObj.transform, defaultFont);
     }
 
     private void BuildTitleMenu(Transform canvasTransform, Font font)
     {
+        // Contenedor pantalla completa (1920x1080)
         RectTransform bgRect = CreatePanel(canvasTransform, "Panel_PantallaTitulo",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero, new Color(0.04f, 0.07f, 0.12f, 0.92f));
+            Vector2.zero, Vector2.zero, Color.white);
         _titleMenuPanel = bgRect.gameObject;
 
-        RectTransform card = CreatePanel(bgRect, "Card_Central",
+        Image bgImg = bgRect.GetComponent<Image>();
+        if (_menuBackgroundSprite != null)
+        {
+            bgImg.sprite = _menuBackgroundSprite;
+            bgImg.color = Color.white;
+            bgImg.preserveAspect = false;
+        }
+        else
+        {
+            bgImg.color = new Color(0.08f, 0.04f, 0.12f, 0.98f);
+        }
+
+        // LOGO OFICIAL ("Logo de Rescate Veterinario.png") arriba a la izquierda sobre la columna de botones
+        GameObject logoObj = new GameObject("Logo_RescateVeterinario");
+        logoObj.transform.SetParent(bgRect, false);
+        RectTransform logoRect = logoObj.AddComponent<RectTransform>();
+        logoRect.anchorMin = new Vector2(0.5f, 0.5f);
+        logoRect.anchorMax = new Vector2(0.5f, 0.5f);
+        logoRect.pivot = new Vector2(0.5f, 0.5f);
+        logoRect.anchoredPosition = new Vector2(-575f, 290f);
+        logoRect.sizeDelta = new Vector2(900f, 450f);
+
+        Image logoImg = logoObj.AddComponent<Image>();
+        logoImg.raycastTarget = false; // Para que sus esquinas transparentes nunca tapen el botón Jugar
+        if (_menuLogoSprite != null)
+        {
+            logoImg.sprite = _menuLogoSprite;
+            logoImg.preserveAspect = true;
+            logoImg.color = Color.white;
+        }
+
+        // COLUMNA DE 4 BOTONES CON SPRITES REALES Y HOVER TURQUESA (110% Hover / 105% Presionado)
+        Vector2 btnSize = new Vector2(430f, 138f);
+        float columnX = -585f;
+
+        CreateSpriteMenuButton(bgRect, "Btn_Jugar", _btnJugarSprite, font, "▶  Jugar",
+            new Vector2(columnX, -35f), btnSize, StartOrResumeGame);
+
+        CreateSpriteMenuButton(bgRect, "Btn_Opciones", _btnOpcionesSprite, font, "⚙  Opciones",
+            new Vector2(columnX, -148f), btnSize, ToggleOptionsPanel);
+
+        CreateSpriteMenuButton(bgRect, "Btn_Creditos", _btnCreditosSprite, font, "★  Créditos",
+            new Vector2(columnX, -261f), btnSize, ToggleCreditsPanel);
+
+        CreateSpriteMenuButton(bgRect, "Btn_Salir", _btnSalirSprite, font, "✖  Salir",
+            new Vector2(columnX, -374f), btnSize, QuitGame);
+
+        // SUBPANEL FLOTANTE DE OPCIONES (se abre a la derecha al tocar "Opciones")
+        RectTransform optRect = CreatePanel(bgRect, "SubPanel_Opciones",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(820f, 640f), new Color(0.08f, 0.13f, 0.20f, 0.98f));
-
-        CreateText(card, "Title", font, 52, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -65f), new Vector2(-40f, 70f),
-            new Color(0.35f, 0.95f, 0.72f)).text = "RESCATE VETERINARIO";
-
-        CreateText(card, "Subtitle", font, 21, FontStyle.Italic, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -115f), new Vector2(-40f, 36f),
-            new Color(0.75f, 0.88f, 1f)).text = "Sedá a los gatos corruptos, rescatá a Dibu y Cuti y liberá todas las jaulas";
-
-        // Botones principales requeridos por la cátedra: Jugar, Opciones, Créditos, Salir
-        CreateButton(card, "Btn_Play", font, "▶  JUGAR",
-            new Vector2(-210f, 95f), new Vector2(280f, 56f), new Color(0.18f, 0.68f, 0.44f), StartOrResumeGame);
-
-        CreateButton(card, "Btn_Options", font, "⚙  OPCIONES (SONIDO)",
-            new Vector2(-210f, 20f), new Vector2(280f, 56f), new Color(0.22f, 0.48f, 0.75f), ToggleOptionsPanel);
-
-        CreateButton(card, "Btn_Credits", font, "★  CRÉDITOS",
-            new Vector2(-210f, -55f), new Vector2(280f, 56f), new Color(0.45f, 0.35f, 0.72f), ToggleCreditsPanel);
-
-        CreateButton(card, "Btn_RestartMenu", font, "↻  REINICIAR NIVEL",
-            new Vector2(-210f, -130f), new Vector2(280f, 56f), new Color(0.65f, 0.48f, 0.20f), RestartLevel);
-
-        CreateButton(card, "Btn_Exit", font, "✖  SALIR",
-            new Vector2(-210f, -205f), new Vector2(280f, 56f), new Color(0.72f, 0.22f, 0.26f), QuitGame);
-
-        // Subpanel de Opciones (Slider de Volumen General)
-        RectTransform optRect = CreatePanel(card, "SubPanel_Opciones",
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(155f, -35f), new Vector2(390f, 320f), new Color(0.05f, 0.08f, 0.13f, 0.95f));
+            new Vector2(180f, -60f), new Vector2(480f, 320f), new Color(0.08f, 0.05f, 0.14f, 0.94f));
         _optionsSubPanel = optRect.gameObject;
 
+        CreateText(optRect, "Opt_Title", font, 28, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -42f), new Vector2(-30f, 40f),
+            new Color(0.38f, 1f, 0.88f)).text = "OPCIONES DE SONIDO";
+
         float currentVol = AudioManager.Instance != null ? AudioManager.Instance.MasterVolume : AudioListener.volume;
-        _volumeLabelText = CreateText(optRect, "Vol_Label", font, 24, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -65f), new Vector2(-30f, 40f), Color.white);
+        _volumeLabelText = CreateText(optRect, "Vol_Label", font, 23, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -100f), new Vector2(-30f, 36f), Color.white);
         _volumeLabelText.text = $"Volumen General: {Mathf.RoundToInt(currentVol * 100f)}%";
 
-        CreateVolumeSlider(optRect, currentVol);
+        _titleVolumeSlider = CreateVolumeSlider(optRect, currentVol, new Vector2(0f, 0f));
 
-        CreateText(optRect, "Opt_Hint", font, 18, FontStyle.Normal, TextAnchor.MiddleCenter,
-            new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 70f), new Vector2(-30f, 80f),
-            new Color(0.75f, 0.85f, 0.95f)).text = "Mové la barra para regular el volumen general de la música y efectos de sonido.";
+        CreateText(optRect, "Opt_Hint", font, 17, FontStyle.Normal, TextAnchor.MiddleCenter,
+            new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 95f), new Vector2(-40f, 54f),
+            new Color(0.82f, 0.88f, 0.96f)).text = "Deslizá la barra para ajustar el volumen de la música y efectos.";
 
-        // Subpanel de Créditos
-        RectTransform credRect = CreatePanel(card, "SubPanel_Creditos",
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(155f, -35f), new Vector2(390f, 320f), new Color(0.05f, 0.08f, 0.13f, 0.95f));
+        CreateButton(optRect, "Btn_CloseOptions", font, "CERRAR",
+            new Vector2(0f, -115f), new Vector2(180f, 44f), new Color(0.20f, 0.78f, 0.68f), () => _optionsSubPanel.SetActive(false));
+
+        // PANTALLA COMPLETA DE CRÉDITOS ILUSTRADA (Fondo Pizarra de Corcho con Dibu y Cuti + Botón "<- Volver" abajo a la izquierda)
+        RectTransform credRect = CreatePanel(bgRect, "Panel_PantallaCreditos",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, Color.white);
         _creditsSubPanel = credRect.gameObject;
 
-        CreateText(credRect, "Cred_Text", font, 20, FontStyle.Normal, TextAnchor.MiddleCenter,
-            Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-30f, -30f), Color.white).text =
-            "CRÉDITOS\n\n" +
-            "Desarrollo, Programación y Nivel:\nFederico Andrés Marazzi\n\n" +
-            "Materia:\nProgramación de Videojuegos II\n\n" +
-            "Protagonistas Felinos:\nDibu y Cuti";
+        Image credBgImg = credRect.GetComponent<Image>();
+        if (_creditsBackgroundSprite != null)
+        {
+            credBgImg.sprite = _creditsBackgroundSprite;
+            credBgImg.color = Color.white;
+            credBgImg.preserveAspect = false;
+        }
+        else
+        {
+            credBgImg.color = new Color(0.08f, 0.05f, 0.14f, 0.98f);
+        }
 
-        _optionsSubPanel.SetActive(true); // Dejo visible el control de sonido por defecto a la derecha
+        // Botón "<- Volver" con papel rasgado ubicado abajo a la izquierda sobre el escritorio y con el mismo Hover 110% turquesa y Presión 105%
+        CreateSpriteMenuButton(credRect, "Btn_VolverCreditos", _btnVolverSprite, font, "⬅  Volver",
+            new Vector2(-745f, -450f), new Vector2(348f, 116f), () => _creditsSubPanel.SetActive(false));
+
+        // Por defecto ambos subpaneles arrancan ocultos para que la portada se vea igual a tu imagen de referencia
+        _optionsSubPanel.SetActive(false);
         _creditsSubPanel.SetActive(false);
         _titleMenuPanel.SetActive(false);
     }
 
-    private void CreateVolumeSlider(Transform parent, float initialValue)
+    private void BuildPauseMenu(Transform canvasTransform, Font font)
+    {
+        RectTransform pauseOverlay = CreatePanel(canvasTransform, "Panel_MenuPausa",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, new Color(0.04f, 0.05f, 0.09f, 0.78f));
+        _pauseMenuPanel = pauseOverlay.gameObject;
+
+        RectTransform card = CreatePanel(pauseOverlay, "Card_Pausa",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(560f, 560f), new Color(0.09f, 0.07f, 0.15f, 0.96f));
+
+        CreateText(card, "Pause_Title", font, 40, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -55f), new Vector2(-40f, 56f),
+            new Color(0.38f, 1f, 0.88f)).text = "JUEGO EN PAUSA";
+
+        float currentVol = AudioManager.Instance != null ? AudioManager.Instance.MasterVolume : AudioListener.volume;
+        _pauseVolumeLabelText = CreateText(card, "Pause_VolLabel", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -115f), new Vector2(-40f, 30f), Color.white);
+        _pauseVolumeLabelText.text = $"Volumen General: {Mathf.RoundToInt(currentVol * 100f)}%";
+
+        _pauseVolumeSlider = CreateVolumeSlider(card, currentVol, new Vector2(0f, 125f));
+
+        CreateButton(card, "Btn_Resume", font, "▶  REANUDAR PARTIDA (ESC)",
+            new Vector2(0f, 45f), new Vector2(340f, 54f), new Color(0.18f, 0.68f, 0.44f), ResumeFromPause);
+
+        CreateButton(card, "Btn_RestartPause", font, "↻  REINICIAR NIVEL",
+            new Vector2(0f, -25f), new Vector2(340f, 54f), new Color(0.65f, 0.48f, 0.20f), RestartLevel);
+
+        CreateButton(card, "Btn_MainMenuPause", font, "⌂  VOLVER AL MENÚ DE INICIO",
+            new Vector2(0f, -95f), new Vector2(340f, 54f), new Color(0.24f, 0.46f, 0.74f), OpenTitleMenu);
+
+        CreateButton(card, "Btn_QuitPause", font, "✖  SALIR DEL JUEGO",
+            new Vector2(0f, -165f), new Vector2(340f, 54f), new Color(0.72f, 0.22f, 0.26f), QuitGame);
+
+        _pauseMenuPanel.SetActive(false);
+    }
+
+    private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
+    {
+        GameObject btnObj = new GameObject(name);
+        btnObj.transform.SetParent(parent, false);
+
+        RectTransform rt = btnObj.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0.5f, 0.5f);
+        rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+
+        Image img = btnObj.AddComponent<Image>();
+        if (sprite != null)
+        {
+            img.sprite = sprite;
+            img.preserveAspect = true;
+            img.color = Color.white;
+        }
+        else
+        {
+            img.color = new Color(0.88f, 0.80f, 0.77f, 1f);
+            CreateText(rt, "Label", fallbackFont, 26, FontStyle.Bold, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.black).text = fallbackLabel;
+        }
+
+        Button btn = btnObj.AddComponent<Button>();
+        // Desactivamos la transición por defecto de Unity para que MenuButtonHover controle el cambio a turquesa y el escalado 110% / 105%
+        btn.transition = Selectable.Transition.None;
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(onClick);
+
+        MenuButtonHover hover = btnObj.AddComponent<MenuButtonHover>();
+        if (sprite != null)
+            hover.SetBaseSprite(sprite);
+    }
+
+    private Slider CreateVolumeSlider(Transform parent, float initialValue, Vector2 anchoredPos)
     {
         GameObject sliderObj = new GameObject("Slider_Volumen");
         sliderObj.transform.SetParent(parent, false);
         RectTransform sliderRect = sliderObj.AddComponent<RectTransform>();
         sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
         sliderRect.anchorMax = new Vector2(0.5f, 0.5f);
-        sliderRect.sizeDelta = new Vector2(310f, 36f);
-        sliderRect.anchoredPosition = new Vector2(0f, 15f);
+        sliderRect.sizeDelta = new Vector2(340f, 36f);
+        sliderRect.anchoredPosition = anchoredPos;
 
         // Fondo de la barra
-        RectTransform bg = CreatePanel(sliderRect, "Background",
+        CreatePanel(sliderRect, "Background",
             new Vector2(0f, 0.25f), new Vector2(1f, 0.75f), new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, new Color(0.22f, 0.26f, 0.34f, 1f));
 
@@ -626,7 +882,7 @@ public class GameManager : MonoBehaviour
 
         RectTransform fill = CreatePanel(fillAreaRect, "Fill",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero, new Color(0.25f, 0.90f, 0.55f, 1f));
+            Vector2.zero, Vector2.zero, new Color(0.38f, 1.00f, 0.88f, 1f));
 
         // Handle Slide Area
         GameObject handleArea = new GameObject("Handle Slide Area");
@@ -650,6 +906,7 @@ public class GameManager : MonoBehaviour
         slider.maxValue = 1f;
         slider.value = initialValue;
         slider.onValueChanged.AddListener(OnVolumeSliderChanged);
+        return slider;
     }
 
     private RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color bgColor)
@@ -697,8 +954,11 @@ public class GameManager : MonoBehaviour
             anchoredPos, size, color);
 
         Button btn = btnRect.gameObject.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;
         btn.targetGraphic = btnRect.GetComponent<Image>();
         btn.onClick.AddListener(onClick);
+
+        btnRect.gameObject.AddComponent<MenuButtonHover>();
 
         CreateText(btnRect, "Label", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white).text = label;

@@ -98,7 +98,7 @@ public class PlayerController : Entity
 
     private void Update()
     {
-        if (!_controlEnabled) return;
+        if (!_controlEnabled || GameManager.IsMenuOpen || Time.timeScale <= 0f) return;
 
         // CAMBIO: el cuerpo gira hacia donde camina, salvo que esté apuntando (click derecho mantenido):
         // ahí mira al mouse todo el tiempo

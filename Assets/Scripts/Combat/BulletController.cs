@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 1:06:19 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/12/2026, 7:57:49 AM
+ * @LastEditTime: 11/12/2026, 8:38:58 AM
  * @Description: Dardo tranquilizante que sale del pool. Lo traje del BulletController del proyecto anterior.
  *   CAMBIOS: ahora ignoro los triggers (zonas, sensores) para que no desaparezca al cruzarlos,
  *   y busco el IDamageable también en el padre por si el collider es de un hijo.
@@ -29,6 +29,22 @@ public class BulletController : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _rb.useGravity = false;                                          // que no se caiga
         _rb.collisionDetectionMode = CollisionDetectionMode.Continuous; // que no atraviese paredes
+
+        // Le doy un brillo interior cian/verde sedante por shader (Emission) una sola vez al crearse en el pool (costo GPU = 0)
+        Color dartGlow = new Color(0.15f, 0.95f, 0.75f);
+        foreach (Renderer r in GetComponentsInChildren<Renderer>(true))
+        {
+            if (r == null) continue;
+            Material mat = r.material;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", dartGlow);
+            else if (mat.HasProperty("_Color")) mat.color = dartGlow;
+
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", dartGlow * 1.4f);
+            }
+        }
     }
 
     // OnEnable se llama cada vez que el pool la activa, no solo la primera vez que se crea

@@ -10,12 +10,15 @@
  * @Email: federicoandresmarazzi@gmail.com
  */
 
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
 [RequireComponent(typeof(NavMeshAgent))]
 public class Ally : Entity
 {
+    public static readonly List<Ally> ActiveAllies = new List<Ally>();
+
     [Header("Seguimiento al Jugador")]
     [SerializeField] private float _followSpeed = 3.5f;    // camina tranqui cuando me sigue así no parece que me quiere atacar
     [SerializeField] private float _combatSpeed = 6f;      // corre rápido recién cuando ve a un corrupto para ir a pegarle
@@ -59,9 +62,7 @@ public class Ally : Entity
     {
         base.Awake();
         _agent = GetComponent<NavMeshAgent>();
-        _animator = GetComponentInChildren<Animator>();
-        if (_animator != null)
-            _animator.applyRootMotion = false;
+        SetupValidAnimator();
         if (_agent != null)
             _agent.speed = _followSpeed;
 
@@ -89,6 +90,17 @@ public class Ally : Entity
 
         CacheRenderers();
         CreateGreenRing();
+    }
+
+    private void OnEnable()
+    {
+        if (!ActiveAllies.Contains(this))
+            ActiveAllies.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        ActiveAllies.Remove(this);
     }
 
     private void Start()
@@ -122,6 +134,7 @@ public class Ally : Entity
     private void ApplyFurTint(bool corrupted)
     {
         if (_renderers == null) return;
+        Color emissionGlow = _corruptTint * 0.55f;
         for (int i = 0; i < _renderers.Length; i++)
         {
             if (_renderers[i] == null || _renderers[i] == _ringRenderer) continue;
@@ -131,6 +144,20 @@ public class Ally : Entity
                 mat.SetColor("_BaseColor", targetCol);
             if (mat.HasProperty("_Color"))
                 mat.color = targetCol;
+
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                if (corrupted)
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", emissionGlow);
+                }
+                else
+                {
+                    mat.SetColor("_EmissionColor", Color.black);
+                    mat.DisableKeyword("_EMISSION");
+                }
+            }
         }
     }
 
@@ -174,7 +201,7 @@ public class Ally : Entity
                 FollowPlayer();
         }
 
-        if (_animator != null)
+        if (_animator != null && _animator.runtimeAnimatorController != null)
         {
             float speed = (_agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped)
                 ? _agent.velocity.magnitude
@@ -187,6 +214,26 @@ public class Ally : Entity
             bool moving = _agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped && _agent.velocity.sqrMagnitude > 0.05f;
             float yHop = moving ? Mathf.Abs(Mathf.Sin(Time.time * 12f)) * 0.08f : 0f;
             model.localPosition = new Vector3(model.localPosition.x, 0.1f + yHop, model.localPosition.z);
+        }
+    }
+
+    private void SetupValidAnimator()
+    {
+        Animator[] animators = GetComponentsInChildren<Animator>(true);
+        _animator = null;
+        for (int i = 0; i < animators.Length; i++)
+        {
+            if (animators[i].runtimeAnimatorController != null)
+            {
+                _animator = animators[i];
+                _animator.applyRootMotion = false;
+                _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                _animator.enabled = true;
+            }
+            else
+            {
+                animators[i].enabled = false;
+            }
         }
     }
 
@@ -312,12 +359,12 @@ public class Ally : Entity
 
     private Enemy FindClosestEnemy()
     {
-        Enemy[] enemies = FindObjectsByType<Enemy>(FindObjectsSortMode.None);
         Enemy closest = null;
         float minDist = _enemyDetectRange;
 
-        foreach (Enemy e in enemies)
+        for (int i = 0; i < Enemy.ActiveEnemies.Count; i++)
         {
+            Enemy e = Enemy.ActiveEnemies[i];
             if (e == null || e.IsDead || !e.enabled) continue;
             float d = Vector3.Distance(transform.position, e.transform.position);
             if (d < minDist)

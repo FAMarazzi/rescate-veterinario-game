@@ -11,6 +11,7 @@
  */
 
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -19,6 +20,10 @@ using UnityEngine.AI;
 [RequireComponent(typeof(Rigidbody))]
 public abstract class Enemy : Entity
 {
+    public static readonly List<Enemy> ActiveEnemies = new List<Enemy>();
+    private static readonly RaycastHit[] _losHitsBuffer = new RaycastHit[12];
+    private static PlayerController _cachedPlayer;
+
     protected enum State { Idle, Chase, Attack, Dead }
 
     [Header("Detección y Distancias")]
@@ -60,14 +65,14 @@ public abstract class Enemy : Entity
     private Color[] _originalColors;
     private Coroutine _flashCoroutine;
 
+    private static RuntimeAnimatorController _sharedCatController;
+
     protected override void Awake()
     {
         base.Awake();
         _agent = GetComponent<NavMeshAgent>();
         _rb = GetComponent<Rigidbody>();
-        _animator = GetComponentInChildren<Animator>();
-        if (_animator != null)
-            _animator.applyRootMotion = false;
+        SetupValidAnimator();
 
         // Congelo la rotación y la posición Y para que no se caiga ni me levante cuando nos chocamos
         _rb.constraints = RigidbodyConstraints.FreezeRotation | RigidbodyConstraints.FreezePositionY;
@@ -97,14 +102,26 @@ public abstract class Enemy : Entity
         SetRenderersColor(_corruptTint); // arranca teñido de violeta por estar corrupto
     }
 
+    protected virtual void OnEnable()
+    {
+        if (!ActiveEnemies.Contains(this))
+            ActiveEnemies.Add(this);
+    }
+
+    protected virtual void OnDisable()
+    {
+        ActiveEnemies.Remove(this);
+    }
+
     protected virtual void Start()
     {
-        // Busco al jugador en la escena por su componente PlayerController
-        PlayerController player = FindFirstObjectByType<PlayerController>();
-        if (player != null)
+        if (_cachedPlayer == null)
+            _cachedPlayer = FindFirstObjectByType<PlayerController>();
+
+        if (_cachedPlayer != null)
         {
-            _target = player.transform;
-            _targetEntity = player;
+            _target = _cachedPlayer.transform;
+            _targetEntity = _cachedPlayer;
         }
 
         // Creo la barra de vida flotante para cumplir con que todas las unidades tengan su barra de salud
@@ -166,17 +183,19 @@ public abstract class Enemy : Entity
         UpdateAnimator();
     }
 
-    // Si hay un gatito aliado (Dibu/Cuti) más cerca mío que la veterinaria, me entretengo peleando con él
+    // Si hay un gatito aliado (Dibu/Cuti) más cerca mío que la veterinaria, me entretengo peleando con él (sin usar FindObjectsByType)
     private void RefreshClosestTarget()
     {
-        PlayerController player = FindFirstObjectByType<PlayerController>();
-        Transform bestTarget = player != null && !player.IsDead ? player.transform : null;
-        Entity bestEntity = player;
+        if (_cachedPlayer == null)
+            _cachedPlayer = FindFirstObjectByType<PlayerController>();
+
+        Transform bestTarget = _cachedPlayer != null && !_cachedPlayer.IsDead ? _cachedPlayer.transform : null;
+        Entity bestEntity = _cachedPlayer;
         float bestDist = bestTarget != null ? Vector3.Distance(transform.position, bestTarget.position) : float.MaxValue;
 
-        Ally[] allies = FindObjectsByType<Ally>(FindObjectsSortMode.None);
-        foreach (Ally ally in allies)
+        for (int i = 0; i < Ally.ActiveAllies.Count; i++)
         {
+            Ally ally = Ally.ActiveAllies[i];
             if (ally == null || !ally.enabled || ally.IsDead || ally.IsCorrupted) continue;
             float d = Vector3.Distance(transform.position, ally.transform.position);
             // Le doy un poquito de prioridad al aliado si está cerca para que haga de tanque
@@ -192,13 +211,70 @@ public abstract class Enemy : Entity
         _targetEntity = bestEntity;
     }
 
+    private void SetupValidAnimator()
+    {
+        Animator[] anims = GetComponentsInChildren<Animator>(true);
+        _animator = null;
+
+        // Busco primero el Animator hijo que realmente tenga el AnimatorController asignado (por ej. en Armature)
+        for (int i = 0; i < anims.Length; i++)
+        {
+            if (anims[i] != null && anims[i].runtimeAnimatorController != null)
+            {
+                _animator = anims[i];
+                if (_sharedCatController == null)
+                    _sharedCatController = _animator.runtimeAnimatorController;
+            }
+        }
+
+        // Si este gato tenía un Animator vacío pero otro gato ya registró el CatAnimator, se lo asigno y apago los duplicados vacíos
+        if (_animator == null && anims.Length > 0 && _sharedCatController != null)
+        {
+            _animator = anims[anims.Length - 1]; // suele ser el de Armature o Model
+            _animator.runtimeAnimatorController = _sharedCatController;
+        }
+
+        for (int i = 0; i < anims.Length; i++)
+        {
+            if (anims[i] == null) continue;
+            if (anims[i] == _animator && _animator.runtimeAnimatorController != null)
+            {
+                anims[i].enabled = true;
+                anims[i].applyRootMotion = false;
+            }
+            else if (anims[i].runtimeAnimatorController == null)
+            {
+                // Apago el Animator vacío del FBX padre para que Unity no tire el warning "Animator is not playing an AnimatorController"
+                anims[i].enabled = false;
+            }
+        }
+    }
+
     private void UpdateAnimator()
     {
-        if (_animator == null) return;
         float speed = (_agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped)
             ? _agent.velocity.magnitude
             : 0f;
-        _animator.SetFloat(SpeedHash, speed);
+
+        if (_animator != null && _animator.enabled && _animator.runtimeAnimatorController != null)
+        {
+            _animator.SetFloat(SpeedHash, speed);
+        }
+
+        // Además acompaño la corrida con un galope/saltito procedural suave en el modelo hijo para que todos los gatos se vean súper vivos al correr
+        if (transform.childCount > 0 && !_isDead)
+        {
+            Transform model = transform.GetChild(0);
+            if (model != null && model.name != "HealthBar_Root")
+            {
+                bool moving = speed > 0.15f;
+                float phase = (Time.time + GetInstanceID() * 0.17f) * 14f;
+                float yHop = moving ? Mathf.Abs(Mathf.Sin(phase)) * 0.085f : 0f;
+                float pitch = moving ? Mathf.Sin(phase) * 7f : 0f;
+                model.localPosition = new Vector3(model.localPosition.x, 0.1f + yHop, model.localPosition.z);
+                model.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            }
+        }
     }
 
     protected virtual void UpdateIdle(float distToTarget)
@@ -218,14 +294,14 @@ public abstract class Enemy : Entity
         Vector3 dir = dest - origin;
         float dist = dir.magnitude;
 
-        RaycastHit[] hits = Physics.RaycastAll(origin, dir.normalized, dist);
-        foreach (RaycastHit h in hits)
+        // Uso RaycastNonAlloc con buffer pre-alocado para no generar basura en el Garbage Collector cada frame
+        int hitCount = Physics.RaycastNonAlloc(origin, dir.normalized, _losHitsBuffer, dist);
+        for (int i = 0; i < hitCount; i++)
         {
-            if (h.collider.isTrigger) continue;
+            RaycastHit h = _losHitsBuffer[i];
+            if (h.collider == null || h.collider.isTrigger) continue;
             if (h.transform == transform || h.transform.IsChildOf(transform)) continue;
             if (h.transform == _target || h.transform.IsChildOf(_target)) continue;
-            if (h.collider.GetComponentInParent<Enemy>() != null) continue;
-            if (h.collider.GetComponentInParent<Ally>() != null) continue;
 
             // Si chocó contra una pared de la clínica, todavía no lo veo hasta que cruce la puerta
             if (h.collider.name.StartsWith("Pared"))
@@ -399,76 +475,52 @@ public abstract class Enemy : Entity
         }
     }
 
-    // Genera letras "Z" flotantes arriba del animalito dormido y un leve movimiento de respiración
+    // Genera el efecto "Zzz" arriba del animalito dormido reutilizando un único TextMesh (sin hacer new/Destroy en bucle)
     private IEnumerator SleepZzzRoutine()
     {
         Transform model = transform.childCount > 0 ? transform.GetChild(0) : null;
         Vector3 baseScale = model != null ? model.localScale : Vector3.one;
-        float timer = 0f;
+
+        GameObject zObj = new GameObject("Zzz_Reusable");
+        zObj.transform.SetParent(transform, true);
+        TextMesh tm = zObj.AddComponent<TextMesh>();
+        tm.text = "Zzz";
+        tm.fontSize = 46;
+        tm.characterSize = 0.075f;
+        tm.anchor = TextAnchor.MiddleCenter;
+        tm.alignment = TextAlignment.Center;
+        tm.fontStyle = FontStyle.Bold;
+        Color baseColor = new Color(0.65f, 0.9f, 1f, 1f);
+
+        Camera cam = Camera.main;
+        Vector3 startPos = transform.position + new Vector3(0f, 0.55f, 0f);
+        float cycleDuration = 1.6f;
+        float t = 0f;
 
         while (this != null && gameObject.activeInHierarchy)
         {
-            // Respiración suave del cuerpo mientras duerme
             if (model != null)
             {
                 float breath = 1f + Mathf.Sin(Time.time * 2.5f) * 0.035f;
                 model.localScale = new Vector3(baseScale.x * breath, baseScale.y, baseScale.z * breath);
             }
 
-            timer += Time.deltaTime;
-            if (timer >= 0.9f)
-            {
-                timer = 0f;
-                StartCoroutine(SpawnSingleZRoutine());
-            }
-
-            yield return null;
-        }
-    }
-
-    private IEnumerator SpawnSingleZRoutine()
-    {
-        GameObject zObj = new GameObject("Zzz");
-        Vector3 startPos = transform.position + new Vector3(Random.Range(-0.15f, 0.15f), 0.5f, 0f);
-        zObj.transform.position = startPos;
-
-        TextMesh tm = zObj.AddComponent<TextMesh>();
-        tm.text = "Z";
-        tm.fontSize = 48;
-        tm.characterSize = 0.08f;
-        tm.anchor = TextAnchor.MiddleCenter;
-        tm.alignment = TextAlignment.Center;
-        tm.fontStyle = FontStyle.Bold;
-        Color baseColor = new Color(0.65f, 0.9f, 1f, 1f); // celeste suave de sueño
-        tm.color = baseColor;
-
-        Camera cam = Camera.main;
-        float duration = 1.6f;
-        float t = 0f;
-
-        while (t < duration && zObj != null)
-        {
             t += Time.deltaTime;
-            float p = t / duration;
+            if (t >= cycleDuration)
+                t = 0f;
 
-            // Sube flotando y haciendo un pequeño zigzag como en los dibujos animados
-            float sway = Mathf.Sin(p * Mathf.PI * 2.5f) * 0.18f;
-            zObj.transform.position = startPos + new Vector3(sway, p * 1.1f, 0f);
-
-            // Crece un poquito y se va desvaneciendo al final
-            float scale = Mathf.Lerp(0.6f, 1.25f, p);
-            zObj.transform.localScale = Vector3.one * scale;
+            float p = t / cycleDuration;
+            float sway = Mathf.Sin(p * Mathf.PI * 2.5f) * 0.16f;
+            zObj.transform.position = startPos + new Vector3(sway, p * 1.0f, 0f);
+            zObj.transform.localScale = Vector3.one * Mathf.Lerp(0.65f, 1.2f, p);
             tm.color = new Color(baseColor.r, baseColor.g, baseColor.b, 1f - (p * p));
 
-            // Siempre mira hacia la cámara (billboard)
+            if (cam == null) cam = Camera.main;
             if (cam != null)
                 zObj.transform.rotation = cam.transform.rotation;
 
             yield return null;
         }
-
-        if (zObj != null)
-            Destroy(zObj);
     }
 
     private void CacheRenderers()
@@ -498,12 +550,20 @@ public abstract class Enemy : Entity
 
     private void SetRenderersColor(Color c)
     {
+        // Brillo interior emisivo ("radioactivo") en el shader: cuesta 0% de GPU comparado con agregar una Point Light
+        Color emissionGlow = c * 0.55f;
         for (int i = 0; i < _renderers.Length; i++)
         {
             if (_renderers[i] == null) continue;
             Material mat = _renderers[i].material;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
             else if (mat.HasProperty("_Color")) mat.color = c;
+
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", emissionGlow);
+            }
         }
     }
 
@@ -515,6 +575,12 @@ public abstract class Enemy : Entity
             Material mat = _renderers[i].material;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", _originalColors[i]);
             else if (mat.HasProperty("_Color")) mat.color = _originalColors[i];
+
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.SetColor("_EmissionColor", Color.black);
+                mat.DisableKeyword("_EMISSION");
+            }
         }
     }
 

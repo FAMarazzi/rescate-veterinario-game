@@ -145,9 +145,16 @@ public class Cage : MonoBehaviour, IInteractable
 
     private void SpawnRunningKitten(Vector3 spawnPos)
     {
-        GameObject prefab = _rescuedKittenPrefab;
+        spawnPos.y = 0.02f;
 
-        // Si no asigné un prefab a mano en el Inspector, busco el modelo de un gato de la escena para clonar su parte visual sana
+        // Uso el KittenPool (Object Pooling) para reciclar los gatitos rescatados sin hacer Instantiate/Destroy en tiempo real
+        if (KittenPool.Instance != null)
+        {
+            KittenPool.Instance.Get(spawnPos, _clinicExitPos);
+            return;
+        }
+
+        GameObject prefab = _rescuedKittenPrefab;
         if (prefab == null)
         {
             Enemy anyCat = FindFirstObjectByType<Enemy>();
@@ -156,12 +163,10 @@ public class Cage : MonoBehaviour, IInteractable
 
         if (prefab == null) return;
 
-        spawnPos.y = 0.02f;
         GameObject kitten = Instantiate(prefab, spawnPos, Quaternion.identity);
         kitten.name = "GatitoRescatado";
-        kitten.transform.localScale = Vector3.one * 0.85f; // un cachito más chiquito que los corruptos
+        kitten.transform.localScale = Vector3.one * 0.85f;
 
-        // Le pongo color blanco/natural al material para que se vea sano (sin el tinte violeta de corrupto)
         foreach (Renderer r in kitten.GetComponentsInChildren<Renderer>())
         {
             if (r == null) continue;

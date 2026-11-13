@@ -2,9 +2,10 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 5:14:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/11/2026, 5:14:00 PM
+ * @LastEditTime: 11/12/2026, 8:41:00 AM
  * @Description: Gatito sano rescatado de una jaula común. Apenas le abrís la jaula con la E,
- *   sale corriendo contento por el NavMesh hacia la salida de la clínica para ponerse a salvo.
+ *   sale del KittenPool (Object Pooling), corre por el NavMesh hacia la salida de la clínica
+ *   y al llegar se devuelve al pool sin usar Destroy.
  * @Copyright: Copyright (©) 2026 Federico Marazzi. All rights reserved.
  * @Email: federicoandresmarazzi@gmail.com
  */
@@ -24,13 +25,7 @@ public class RescuedKitten : MonoBehaviour
     public void RunToExit(Vector3 exitPoint)
     {
         _exitPoint = exitPoint;
-
-        // Si reutilizo el prefab del gato, le apago cualquier script de enemigo/aliado y el collider para que no moleste
-        Enemy enemy = GetComponent<Enemy>();
-        if (enemy != null) Destroy(enemy);
-
-        Ally ally = GetComponent<Ally>();
-        if (ally != null) Destroy(ally);
+        _lifeTimer = 14f;
 
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
@@ -38,14 +33,32 @@ public class RescuedKitten : MonoBehaviour
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
 
-        _animator = GetComponentInChildren<Animator>();
-        if (_animator != null) _animator.applyRootMotion = false;
+        if (_animator == null)
+        {
+            Animator[] animators = GetComponentsInChildren<Animator>(true);
+            for (int i = 0; i < animators.Length; i++)
+            {
+                if (animators[i].runtimeAnimatorController != null)
+                {
+                    _animator = animators[i];
+                    _animator.applyRootMotion = false;
+                    _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                    _animator.enabled = true;
+                }
+                else
+                {
+                    animators[i].enabled = false;
+                }
+            }
+        }
 
-        _agent = GetComponent<NavMeshAgent>();
-        if (_agent == null) _agent = gameObject.AddComponent<NavMeshAgent>();
+        if (_agent == null)
+            _agent = GetComponent<NavMeshAgent>();
+        if (_agent == null)
+            _agent = gameObject.AddComponent<NavMeshAgent>();
 
         _agent.enabled = true;
-        _agent.speed = 6.2f; // sale corriendo rapidito hacia la puerta de salida
+        _agent.speed = 6.2f;
         _agent.Warp(transform.position);
         _agent.SetDestination(_exitPoint);
     }
@@ -54,14 +67,31 @@ public class RescuedKitten : MonoBehaviour
     {
         _lifeTimer -= Time.deltaTime;
 
-        if (_animator != null && _agent != null && _agent.isOnNavMesh)
-            _animator.SetFloat(SpeedHash, _agent.velocity.magnitude);
+        float speed = (_agent != null && _agent.isOnNavMesh) ? _agent.velocity.magnitude : 0f;
+        if (_animator != null && _animator.runtimeAnimatorController != null)
+            _animator.SetFloat(SpeedHash, speed);
 
-        // Cuando llega a la puerta de entrada de la clínica (o pasan unos segundos), ya quedó a salvo afuera
-        if (_lifeTimer <= 0f || Vector3.Distance(transform.position, _exitPoint) <= 1.8f)
+        if (transform.childCount > 0)
         {
-            Destroy(gameObject);
+            Transform model = transform.GetChild(0);
+            bool moving = speed > 0.15f;
+            float phase = (Time.time + GetInstanceID() * 0.17f) * 16f;
+            float yHop = moving ? Mathf.Abs(Mathf.Sin(phase)) * 0.09f : 0f;
+            float pitch = moving ? Mathf.Sin(phase) * 8f : 0f;
+            model.localPosition = new Vector3(model.localPosition.x, 0.1f + yHop, model.localPosition.z);
+            model.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        }
+
+        // Cuando llega a la puerta de entrada de la clínica, vuelve al KittenPool en vez de hacer Destroy
+        if (_lifeTimer <= 0f || (_exitPoint - transform.position).sqrMagnitude <= 3.24f)
+        {
+            if (_agent != null && _agent.isOnNavMesh)
+                _agent.isStopped = true;
+
+            if (KittenPool.Instance != null)
+                KittenPool.Instance.Return(this);
+            else
+                gameObject.SetActive(false);
         }
     }
 }
-
