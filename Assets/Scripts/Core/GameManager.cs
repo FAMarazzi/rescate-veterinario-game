@@ -27,6 +27,7 @@ public class GameManager : MonoBehaviour
     public static bool IsMenuOpen =>
         Instance != null && (
             (Instance._titleMenuPanel != null && Instance._titleMenuPanel.activeSelf) ||
+            (Instance._introStoryPanel != null && Instance._introStoryPanel.activeSelf) ||
             (Instance._pauseMenuPanel != null && Instance._pauseMenuPanel.activeSelf) ||
             (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf)
         );
@@ -45,6 +46,9 @@ public class GameManager : MonoBehaviour
     [Header("Sprites de Pantalla de Créditos (Assets/Creditos)")]
     [SerializeField] private Sprite _creditsBackgroundSprite;
     [SerializeField] private Sprite _btnVolverSprite;
+
+    [Header("Sprite Opcional de Historia / Intro")]
+    [SerializeField] private Sprite _introBackgroundSprite;
 
     private PlayerController _player;
     private int _totalEnemies;
@@ -77,6 +81,11 @@ public class GameManager : MonoBehaviour
     private GameObject _creditsSubPanel;
     private Text _volumeLabelText;
     private Slider _titleVolumeSlider;
+
+    // Pantalla de Historia / Informe de Emergencia (al darle Jugar)
+    private GameObject _introStoryPanel;
+    private CanvasGroup[] _introCardGroups;
+    private Coroutine _introFadeCoroutine;
 
     // Menú de Pausa Independiente (al apretar ESC durante la partida)
     private GameObject _pauseMenuPanel;
@@ -145,6 +154,16 @@ public class GameManager : MonoBehaviour
     private void Update()
     {
         if (Keyboard.current == null) return;
+
+        // Si está abierta la pantalla de Historia / Informe de Emergencia, Enter la salta/empieza y ESC vuelve al Menú
+        if (_introStoryPanel != null && _introStoryPanel.activeSelf)
+        {
+            if (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame)
+                StartOrResumeGame();
+            else if (Keyboard.current.escapeKey.wasPressedThisFrame)
+                OpenTitleMenu();
+            return;
+        }
 
         // Tecla ESC: si estamos en el Menú de Inicio no hace nada; si estamos jugando abre/cierra el Menú de Pausa
         if (Keyboard.current.escapeKey.wasPressedThisFrame && !_gameEnded)
@@ -486,6 +505,7 @@ public class GameManager : MonoBehaviour
         if (_titleMenuPanel == null) return;
         if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
         if (_pauseMenuPanel != null) _pauseMenuPanel.SetActive(false);
+        if (_introStoryPanel != null) _introStoryPanel.SetActive(false);
 
         _titleMenuPanel.SetActive(true);
         // Arrancamos con los subpaneles cerrados para que luzca limpio el fondo de recepción magenta
@@ -494,10 +514,79 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 0f;
     }
 
-    public void StartOrResumeGame()
+    public void OnPlayButtonPressed()
     {
         if (_titleMenuPanel != null)
             _titleMenuPanel.SetActive(false);
+        if (_pauseMenuPanel != null)
+            _pauseMenuPanel.SetActive(false);
+
+        if (_introStoryPanel != null)
+        {
+            OpenIntroStory();
+        }
+        else
+        {
+            StartOrResumeGame();
+        }
+    }
+
+    public void OpenIntroStory()
+    {
+        if (_introStoryPanel == null)
+        {
+            StartOrResumeGame();
+            return;
+        }
+
+        _introStoryPanel.SetActive(true);
+        Time.timeScale = 0f;
+
+        if (_introFadeCoroutine != null)
+            StopCoroutine(_introFadeCoroutine);
+        _introFadeCoroutine = StartCoroutine(FadeInIntroCardsRoutine());
+    }
+
+    private IEnumerator FadeInIntroCardsRoutine()
+    {
+        if (_introCardGroups == null) yield break;
+
+        for (int i = 0; i < _introCardGroups.Length; i++)
+        {
+            if (_introCardGroups[i] != null)
+                _introCardGroups[i].alpha = 0f;
+        }
+
+        for (int i = 0; i < _introCardGroups.Length; i++)
+        {
+            CanvasGroup cg = _introCardGroups[i];
+            if (cg == null) continue;
+
+            float t = 0f;
+            float dur = 0.35f;
+            while (t < dur)
+            {
+                t += Time.unscaledDeltaTime;
+                cg.alpha = Mathf.Clamp01(t / dur);
+                yield return null;
+            }
+            cg.alpha = 1f;
+            yield return new WaitForSecondsRealtime(0.18f);
+        }
+    }
+
+    public void StartOrResumeGame()
+    {
+        if (_introFadeCoroutine != null)
+        {
+            StopCoroutine(_introFadeCoroutine);
+            _introFadeCoroutine = null;
+        }
+
+        if (_titleMenuPanel != null)
+            _titleMenuPanel.SetActive(false);
+        if (_introStoryPanel != null)
+            _introStoryPanel.SetActive(false);
         if (_pauseMenuPanel != null)
             _pauseMenuPanel.SetActive(false);
 
@@ -691,7 +780,10 @@ public class GameManager : MonoBehaviour
         // 5. MENÚ DE PAUSA INDEPENDIENTE (ESC)
         BuildPauseMenu(canvasObj.transform, defaultFont);
 
-        // 6. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
+        // 6. PANTALLA DE HISTORIA / INFORME DE EMERGENCIA (Al darle Jugar desde el Menú)
+        BuildIntroStoryPanel(canvasObj.transform, defaultFont);
+
+        // 7. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
         BuildTitleMenu(canvasObj.transform, defaultFont);
     }
 
@@ -739,7 +831,7 @@ public class GameManager : MonoBehaviour
         float columnX = -585f;
 
         CreateSpriteMenuButton(bgRect, "Btn_Jugar", _btnJugarSprite, font, "▶  Jugar",
-            new Vector2(columnX, -35f), btnSize, StartOrResumeGame);
+            new Vector2(columnX, -35f), btnSize, OnPlayButtonPressed);
 
         CreateSpriteMenuButton(bgRect, "Btn_Opciones", _btnOpcionesSprite, font, "⚙  Opciones",
             new Vector2(columnX, -148f), btnSize, ToggleOptionsPanel);
@@ -837,6 +929,101 @@ public class GameManager : MonoBehaviour
             new Vector2(0f, -165f), new Vector2(340f, 54f), new Color(0.72f, 0.22f, 0.26f), QuitGame);
 
         _pauseMenuPanel.SetActive(false);
+    }
+
+    private void BuildIntroStoryPanel(Transform canvasTransform, Font font)
+    {
+        // Fondo ilustrado oscurecido para que la ficha clínica resalte sobre la clínica magenta
+        RectTransform root = CreatePanel(canvasTransform, "Panel_HistoriaIntro",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, new Color(0.05f, 0.03f, 0.09f, 0.96f));
+        _introStoryPanel = root.gameObject;
+
+        Sprite bg = _introBackgroundSprite != null ? _introBackgroundSprite : _menuBackgroundSprite;
+        if (bg != null)
+        {
+            Image bgImg = root.GetComponent<Image>();
+            bgImg.sprite = bg;
+            bgImg.color = new Color(0.28f, 0.22f, 0.36f, 1f);
+            bgImg.preserveAspect = false;
+        }
+
+        // Carpeta / Ficha Clínica central
+        RectTransform dossier = CreatePanel(root, "Ficha_InformeEmergencia",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(1140f, 760f), new Color(0.08f, 0.06f, 0.14f, 0.95f));
+
+        // Borde superior turquesa/rojo tipo alerta médica
+        CreatePanel(dossier, "Header_Stripe",
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            Vector2.zero, new Vector2(0f, 8f), new Color(0.95f, 0.24f, 0.45f, 1f));
+
+        CreateText(dossier, "Intro_Badge", font, 18, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(440f, 30f),
+            new Color(1f, 0.42f, 0.58f)).text = "EXPEDIENTE CLÍNICO #04 — ALERTA DE EMERGENCIA";
+
+        CreateText(dossier, "Intro_Title", font, 42, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -84f), new Vector2(-60f, 54f),
+            new Color(0.38f, 1f, 0.88f)).text = "INFORME DE EMERGENCIA";
+
+        _introCardGroups = new CanvasGroup[3];
+
+        // 1. ¿QUÉ PASÓ?
+        _introCardGroups[0] = CreateIntroStoryCard(
+            dossier, font, "Card_1_QuePaso", new Vector2(0f, 150f),
+            new Color(0.96f, 0.35f, 0.55f),
+            "1. ¿QUÉ PASÓ? — EL INCIDENTE EN EL QUIRÓFANO",
+            "¡Alerta en la Clínica Veterinaria! Un frasco de suero experimental se rompió en el Quirófano y su neblina violeta alteró a los gatos internados, volviéndolos agresivos."
+        );
+
+        // 2. TU MISIÓN
+        _introCardGroups[1] = CreateIntroStoryCard(
+            dossier, font, "Card_2_Mision", new Vector2(0f, -15f),
+            new Color(0.38f, 1f, 0.88f),
+            "2. TU MISIÓN — SIN LASTIMAR A NADIE",
+            "Apuntá con [Click Derecho] y dispará dardos sedantes con [Click Izquierdo] para dormir a los gatos corruptos (incluido el Gato Jefe del Quirófano). Si se te enciman, empujalos con [Barra Espaciadora] y abrí todas las jaulas con [E]."
+        );
+
+        // 3. TUS COMPAÑEROS
+        _introCardGroups[2] = CreateIntroStoryCard(
+            dossier, font, "Card_3_Companeros", new Vector2(0f, -180f),
+            new Color(1f, 0.85f, 0.35f),
+            "3. TUS COMPAÑEROS — DIBU Y CUTI",
+            "Dibu y Cuti están encerrados en la clínica. Libéralos para que te ayuden a distraer y frenar a los corruptos (si se corrompen, sedalos para curarlos). Usá [Q] si necesitás un botiquín."
+        );
+
+        // Botones inferiores: "¡COMENZAR RESCATE!" y "SALTAR"
+        CreateButton(dossier, "Btn_ComenzarRescate", font, "▶  ¡COMENZAR RESCATE! (Enter)",
+            new Vector2(-140f, -315f), new Vector2(380f, 60f), new Color(0.20f, 0.82f, 0.68f), StartOrResumeGame);
+
+        CreateButton(dossier, "Btn_SaltarIntro", font, "SALTAR  ⏭",
+            new Vector2(220f, -315f), new Vector2(210f, 60f), new Color(0.25f, 0.24f, 0.36f), StartOrResumeGame);
+
+        _introStoryPanel.SetActive(false);
+    }
+
+    private CanvasGroup CreateIntroStoryCard(Transform parent, Font font, string name, Vector2 anchoredPos, Color accentColor, string header, string body)
+    {
+        RectTransform card = CreatePanel(parent, name,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            anchoredPos, new Vector2(1020f, 145f), new Color(0.13f, 0.11f, 0.22f, 0.96f));
+
+        CanvasGroup cg = card.gameObject.AddComponent<CanvasGroup>();
+
+        // Barra lateral de acento
+        CreatePanel(card, "Accent",
+            new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f),
+            Vector2.zero, new Vector2(8f, 0f), accentColor);
+
+        CreateText(card, "Header", font, 21, FontStyle.Bold, TextAnchor.MiddleLeft,
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(12f, -26f), new Vector2(-56f, 32f),
+            accentColor).text = header;
+
+        CreateText(card, "Body", font, 20, FontStyle.Normal, TextAnchor.UpperLeft,
+            new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(12f, -18f), new Vector2(-56f, -54f),
+            new Color(0.93f, 0.95f, 0.99f)).text = body;
+
+        return cg;
     }
 
     private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
