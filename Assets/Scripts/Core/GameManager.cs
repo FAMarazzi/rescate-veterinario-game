@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/12/2026, 6:57:00 PM
+ * @LastEditTime: 11/13/2026, 9:18:35 AM
  * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
  *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
  *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.
@@ -32,6 +32,7 @@ public class GameManager : MonoBehaviour
         );
 
     private static bool _hasShownTitleThisSession = false;
+    private static bool _sceneHookRegistered = false;
 
     [Header("Sprites del Menú de Inicio (Assets/MainMenu)")]
     [SerializeField] private Sprite _menuBackgroundSprite;
@@ -84,9 +85,24 @@ public class GameManager : MonoBehaviour
 
     private Coroutine _notifCoroutine;
 
-    // Se asegura de que el GameManager exista automáticamente al darle Play en la escena del nivel
+    // Se asegura de que el GameManager exista automáticamente al darle Play y también al recargar la escena
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoBootstrap()
+    {
+        if (!_sceneHookRegistered)
+        {
+            _sceneHookRegistered = true;
+            SceneManager.sceneLoaded += OnSceneLoadedStatic;
+        }
+        EnsureInstance();
+    }
+
+    private static void OnSceneLoadedStatic(Scene scene, LoadSceneMode mode)
+    {
+        EnsureInstance();
+    }
+
+    private static void EnsureInstance()
     {
         if (Instance == null && FindFirstObjectByType<PlayerController>() != null)
         {
@@ -262,6 +278,9 @@ public class GameManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this)
+            Instance = null;
+
         if (_player != null)
         {
             _player.OnHealthChanged -= HandlePlayerHealthChanged;
@@ -537,15 +556,16 @@ public class GameManager : MonoBehaviour
 
     public void RestartLevel()
     {
+        _hasShownTitleThisSession = true; // Reinicia directo a jugar sin pasar por la portada
         Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     public void ReturnToMainMenu()
     {
-        _hasShownTitleThisSession = false;
+        _hasShownTitleThisSession = false; // Al recargar la escena abre la portada principal con todo el nivel reseteado
         Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     public void QuitGame()
@@ -811,7 +831,7 @@ public class GameManager : MonoBehaviour
             new Vector2(0f, -25f), new Vector2(340f, 54f), new Color(0.65f, 0.48f, 0.20f), RestartLevel);
 
         CreateButton(card, "Btn_MainMenuPause", font, "⌂  VOLVER AL MENÚ DE INICIO",
-            new Vector2(0f, -95f), new Vector2(340f, 54f), new Color(0.24f, 0.46f, 0.74f), OpenTitleMenu);
+            new Vector2(0f, -95f), new Vector2(340f, 54f), new Color(0.24f, 0.46f, 0.74f), ReturnToMainMenu);
 
         CreateButton(card, "Btn_QuitPause", font, "✖  SALIR DEL JUEGO",
             new Vector2(0f, -165f), new Vector2(340f, 54f), new Color(0.72f, 0.22f, 0.26f), QuitGame);

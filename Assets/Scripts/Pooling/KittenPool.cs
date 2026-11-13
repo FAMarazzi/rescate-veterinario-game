@@ -11,10 +11,12 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class KittenPool : MonoBehaviour
 {
     public static KittenPool Instance { get; private set; }
+    private static bool _sceneHookRegistered = false;
 
     [SerializeField] private GameObject _kittenTemplatePrefab;
     [SerializeField] private int _initialSize = 5;
@@ -25,11 +27,27 @@ public class KittenPool : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoBootstrap()
     {
+        if (!_sceneHookRegistered)
+        {
+            _sceneHookRegistered = true;
+            SceneManager.sceneLoaded += (scene, mode) => EnsureInstance();
+        }
+        EnsureInstance();
+    }
+
+    private static void EnsureInstance()
+    {
         if (Instance == null && FindFirstObjectByType<Cage>() != null)
         {
             GameObject go = new GameObject("KittenPool");
             go.AddComponent<KittenPool>();
         }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+            Instance = null;
     }
 
     private void Awake()

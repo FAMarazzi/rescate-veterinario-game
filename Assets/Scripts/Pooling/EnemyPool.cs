@@ -13,10 +13,12 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class EnemyPool : MonoBehaviour
 {
     public static EnemyPool Instance { get; private set; }
+    private static bool _sceneHookRegistered = false;
 
     [SerializeField] private float _activationDistance = 16.5f; // Distancia a la que se activan los gatos de una sala
     [SerializeField] private float _recycleSleptDistance = 15.0f; // Distancia a la que un gato ya dormido vuelve al pool
@@ -41,11 +43,27 @@ public class EnemyPool : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoBootstrap()
     {
+        if (!_sceneHookRegistered)
+        {
+            _sceneHookRegistered = true;
+            SceneManager.sceneLoaded += (scene, mode) => EnsureInstance();
+        }
+        EnsureInstance();
+    }
+
+    private static void EnsureInstance()
+    {
         if (Instance == null && FindFirstObjectByType<Enemy>() != null)
         {
             GameObject go = new GameObject("EnemyPool");
             go.AddComponent<EnemyPool>();
         }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+            Instance = null;
     }
 
     private void Awake()
