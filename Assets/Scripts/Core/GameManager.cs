@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/13/2026, 9:18:35 AM
+ * @LastEditTime: 11/13/2026, 10:30:50 AM
  * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
  *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
  *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.

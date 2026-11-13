@@ -99,6 +99,13 @@ public class KittenPool : MonoBehaviour
         WorldHealthBar hb = _runtimeTemplate.GetComponent<WorldHealthBar>();
         if (hb != null) DestroyImmediate(hb);
 
+        // Si el gato clonado ya había creado su barra de vida hija (HealthBar_Root), la elimino por completo
+        foreach (Transform child in _runtimeTemplate.GetComponentsInChildren<Transform>(true))
+        {
+            if (child != null && child.name == "HealthBar_Root")
+                DestroyImmediate(child.gameObject);
+        }
+
         Collider col = _runtimeTemplate.GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
@@ -110,7 +117,12 @@ public class KittenPool : MonoBehaviour
             if (r == null) continue;
             Material mat = r.material;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
-            else if (mat.HasProperty("_Color")) mat.color = Color.white;
+            if (mat.HasProperty("_Color")) mat.color = Color.white;
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.SetColor("_EmissionColor", Color.black);
+                mat.DisableKeyword("_EMISSION");
+            }
         }
 
         if (_runtimeTemplate.GetComponent<RescuedKitten>() == null)

@@ -58,6 +58,7 @@ public class RescuedKitten : MonoBehaviour
             _agent = gameObject.AddComponent<NavMeshAgent>();
 
         _agent.enabled = true;
+        _agent.isStopped = false;
         _agent.speed = 6.2f;
         _agent.Warp(transform.position);
         _agent.SetDestination(_exitPoint);

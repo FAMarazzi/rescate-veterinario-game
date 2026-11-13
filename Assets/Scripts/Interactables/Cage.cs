@@ -105,10 +105,6 @@ public class Cage : MonoBehaviour, IInteractable
         if (_promptObj != null)
             Destroy(_promptObj);
 
-        // Apago todos los colliders de la jaula primero para que no choquen con el gatito al salir
-        foreach (Collider c in GetComponentsInChildren<Collider>())
-            c.enabled = false;
-
         Vector3 exitPos = _spawnPoint != null
             ? _spawnPoint.position
             : transform.position + (player.transform.position - transform.position).normalized * 1.1f;
@@ -172,7 +168,12 @@ public class Cage : MonoBehaviour, IInteractable
             if (r == null) continue;
             Material mat = r.material;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
-            else if (mat.HasProperty("_Color")) mat.color = Color.white;
+            if (mat.HasProperty("_Color")) mat.color = Color.white;
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.SetColor("_EmissionColor", Color.black);
+                mat.DisableKeyword("_EMISSION");
+            }
         }
 
         RescuedKitten runner = kitten.AddComponent<RescuedKitten>();
@@ -197,10 +198,6 @@ public class Cage : MonoBehaviour, IInteractable
         }
 
         transform.localScale = startScale;
-
-        // Desactivo el collider de la jaula abierta para que no estorbe al gatito al salir
-        Collider col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
     }
 
     private IEnumerator SpawnRescuedTextRoutine()
