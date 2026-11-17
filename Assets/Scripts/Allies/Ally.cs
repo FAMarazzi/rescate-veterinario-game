@@ -59,34 +59,44 @@ public class Ally : Entity
     }
 
     /// <summary>
-    /// Mide los bounds reales del modelo 3D y lo apoya exactamente al ras del piso (transform.position.y),
-    /// sin importar si el pivote del FBX está en las patas (Dibu) o en el centro del cuerpo (Cuti).
+    /// Centra el modelo 3D en X/Z dentro del aro verde y apoya sus patas al ras del piso (transform.position.y),
+    /// limpiando cualquier offset local que tuviera para entrar en la jaula.
     /// </summary>
     public void SnapModelToFloor()
     {
         Transform model = GetModelTransform();
         if (model == null) return;
 
+        model.localPosition = Vector3.zero;
+
         Renderer[] rends = model.GetComponentsInChildren<Renderer>(true);
         bool found = false;
-        float minY = float.MaxValue;
+        Bounds combinedBounds = default;
         for (int i = 0; i < rends.Length; i++)
         {
             if (rends[i] == null || !rends[i].enabled) continue;
             if (rends[i] is LineRenderer) continue;
             if (rends[i].gameObject.name.StartsWith("HB_")) continue;
 
-            if (rends[i].bounds.min.y < minY)
+            if (!found)
             {
-                minY = rends[i].bounds.min.y;
+                combinedBounds = rends[i].bounds;
                 found = true;
+            }
+            else
+            {
+                combinedBounds.Encapsulate(rends[i].bounds);
             }
         }
 
         if (found)
         {
-            float deltaY = transform.position.y - minY;
-            model.position += Vector3.up * deltaY;
+            Vector3 offset = new Vector3(
+                transform.position.x - combinedBounds.center.x,
+                transform.position.y - combinedBounds.min.y,
+                transform.position.z - combinedBounds.center.z
+            );
+            model.position += offset;
         }
 
         _baseModelLocalPos = model.localPosition;

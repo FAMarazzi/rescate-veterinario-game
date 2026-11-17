@@ -89,17 +89,25 @@ public class CameraFollow : MonoBehaviour
         mf.sharedMesh = quadMesh;
 
         MeshRenderer mr = extGround.AddComponent<MeshRenderer>();
-        Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (unlitShader == null) unlitShader = Shader.Find("Unlit/Texture");
+        Material extMat;
+        if (referenceFloorMat != null)
+        {
+            // Clono el material del piso de la clínica para que en la Build de Windows siempre tenga el shader URP compilado (y nunca se vea fucsia/magenta)
+            extMat = new Material(referenceFloorMat);
+        }
+        else
+        {
+            Shader fallbackShader = Shader.Find("Sprites/Default");
+            extMat = new Material(fallbackShader);
+        }
 
-        Material extMat = new Material(unlitShader);
         extMat.name = "Mat_SueloExteriorNocturno";
-        if (referenceFloorMat != null && referenceFloorMat.mainTexture != null)
-            extMat.mainTexture = referenceFloorMat.mainTexture;
         if (extMat.HasProperty("_BaseColor"))
             extMat.SetColor("_BaseColor", _exteriorGroundTint);
         if (extMat.HasProperty("_Color"))
             extMat.color = _exteriorGroundTint;
+        if (extMat.HasProperty("_Smoothness"))
+            extMat.SetFloat("_Smoothness", 0f);
 
         mr.sharedMaterial = extMat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

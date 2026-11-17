@@ -245,6 +245,9 @@ public class GameManager : MonoBehaviour
 
         // Fallback directo leyendo los bytes del PNG en disco para que siempre sea readable y nítido al 100%
         string fullPath = Path.Combine(Application.dataPath, folderName, fileName);
+        if (!File.Exists(fullPath))
+            fullPath = Path.Combine(Application.streamingAssetsPath, folderName, fileName);
+
         if (File.Exists(fullPath))
         {
             byte[] bytes = File.ReadAllBytes(fullPath);
@@ -1214,3 +1217,41 @@ public class GameManager : MonoBehaviour
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white).text = label;
     }
 }
+
+#if UNITY_EDITOR
+// Al generar la Build de Windows, copia automáticamente las carpetas Assets/MainMenu y Assets/Creditos
+// adentro de la carpeta _Data de la build para que File.ReadAllBytes encuentre todos los PNGs del menú.
+public class MenuBuildAssetsPostprocessor : UnityEditor.Build.IPostprocessBuildWithReport
+{
+    public int callbackOrder => 0;
+
+    public void OnPostprocessBuild(UnityEditor.Build.Reporting.BuildReport report)
+    {
+        string exePath = report.summary.outputPath;
+        if (string.IsNullOrEmpty(exePath)) return;
+
+        string buildDir = Path.GetDirectoryName(exePath);
+        string exeName = Path.GetFileNameWithoutExtension(exePath);
+        string dataDir = Path.Combine(buildDir, exeName + "_Data");
+        if (!Directory.Exists(dataDir)) return;
+
+        CopyPngFolder("MainMenu", dataDir);
+        CopyPngFolder("Creditos", dataDir);
+    }
+
+    private static void CopyPngFolder(string folderName, string dataDir)
+    {
+        string srcDir = Path.Combine(Application.dataPath, folderName);
+        if (!Directory.Exists(srcDir)) return;
+
+        string dstDir = Path.Combine(dataDir, folderName);
+        Directory.CreateDirectory(dstDir);
+
+        foreach (string file in Directory.GetFiles(srcDir, "*.png"))
+        {
+            string destFile = Path.Combine(dstDir, Path.GetFileName(file));
+            File.Copy(file, destFile, true);
+        }
+    }
+}
+#endif

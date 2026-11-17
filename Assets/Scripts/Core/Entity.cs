@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 9/21/2026, 12:59:47 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 10/26/2026, 3:55:00 PM
+ * @LastEditTime: 11/16/2026, 8:04:27 PM
  * @Description: Clase base con vida. La traje del proyecto anterior.
  *   CAMBIOS: ya no llamo al UIManager desde acá, ahora aviso con eventos y quien quiera se suscribe.
  *   Agregué Heal() para los botiquines y antídotos, y ResetHealth() para el respawn.

@@ -117,14 +117,14 @@ public class Cage : MonoBehaviour, IInteractable
             _cagedAllyInScene.transform.SetParent(null, true);
             _cagedAllyInScene.ApplyReleaseScale(_releasedAllyScale);
 
-            // Si la jaula estaba rotada (ej: Consultorio2_Jaula a -90°), conservo la orientación derecha que ya tenía el Model hijo
+            // Si la jaula estaba rotada (ej: Consultorio2_Jaula a -90°), el Model tenía +90° en X para compensar la jaula;
+            // al enderezar el root afuera de la jaula, reseteo la rotación local del Model a (0,0,0) para que apunte derecho hacia adelante.
             bool wasTiltedByCage = Vector3.Angle(_cagedAllyInScene.transform.up, Vector3.up) > 15f;
             Transform modelChild = (wasTiltedByCage && _cagedAllyInScene.transform.childCount > 0)
                 ? _cagedAllyInScene.transform.GetChild(0)
                 : null;
             if (modelChild != null && modelChild.name == "HealthBar_Root")
                 modelChild = null;
-            Quaternion savedModelWorldRot = modelChild != null ? modelChild.rotation : Quaternion.identity;
 
             Vector3 lookDir = player.transform.position - transform.position;
             lookDir.y = 0f;
@@ -133,7 +133,7 @@ public class Cage : MonoBehaviour, IInteractable
                 : Quaternion.identity;
 
             if (modelChild != null)
-                modelChild.rotation = savedModelWorldRot;
+                modelChild.localRotation = Quaternion.identity;
 
             exitPos.y = player.transform.position.y;
             if (NavMesh.SamplePosition(exitPos, out NavMeshHit navHit, 3.5f, NavMesh.AllAreas))

@@ -96,9 +96,8 @@ public class WorldHealthBar : MonoBehaviour
     {
         if (_sharedUnlitMat == null)
         {
-            Shader s = Shader.Find("Universal Render Pipeline/Unlit");
-            if (s == null) s = Shader.Find("Unlit/Color");
-            if (s == null) s = Shader.Find("Sprites/Default");
+            Shader s = Shader.Find("Sprites/Default");
+            if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
             _sharedUnlitMat = new Material(s);
         }
 
