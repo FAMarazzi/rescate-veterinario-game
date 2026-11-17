@@ -138,4 +138,15 @@ public class CameraFollow : MonoBehaviour
         // Siempre mira al jugador
         transform.LookAt(_target);
     }
+
+    /// <summary>
+    /// Centra la cámara instantáneamente sobre el jugador (se usa durante el fundido a negro del respawn para evitar un tirón brusco).
+    /// </summary>
+    public void SnapToTarget()
+    {
+        if (_target == null) return;
+        _currentTarget = _target.position;
+        transform.position = _currentTarget + _offset;
+        transform.LookAt(_target);
+    }
 }

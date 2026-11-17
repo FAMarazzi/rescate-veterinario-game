@@ -52,7 +52,8 @@ public class PlayerController : Entity
     [Header("Vidas y Respawn")]
     [SerializeField] private int _maxLives = 3;
     [SerializeField] private Transform _spawnPoint;
-    [SerializeField] private float _respawnDelay = 2f; // CAMBIO: nuevo, antes aparecía la pantalla de derrota directo
+    [SerializeField] private float _respawnDelay = 2.2f; // tiempo para que se vea completa la animación de caída antes del fundido
+    [SerializeField] private float _respawnInvulnerabilityDuration = 2.5f; // segundos de escudo/parpadeo al reaparecer
 
     public int CurrentLives => _currentLives;
     public int MaxLives => _maxLives;
@@ -69,16 +70,20 @@ public class PlayerController : Entity
     private Vector3 _currentVelocity; // la velocidad actual del jugador (así hay inercia)
     private float _meleeTimer;
     private float _shootTimer;
+    private float _invulnerableTimer;
     private bool _controlEnabled = true;
     private bool _isAiming; // true mientras mantengo el click derecho
     private Vector3 _aimPoint; // el punto del piso donde está el mouse, el dardo va hacia ahí
     private float _groundY; // me guardo la altura inicial del piso para que al respawnear no quede flotando
+    private CanvasGroup _respawnFadeGroup;
+    private UnityEngine.UI.Text _respawnFadeText;
 
     // Hasheo los nombres de los parámetros del Animator (es más rápido que usar strings)
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
     private static readonly int MeleeHash = Animator.StringToHash("Melee");
     private static readonly int ShootHash = Animator.StringToHash("Shoot");
     private static readonly int AimingHash = Animator.StringToHash("Aiming");
+    private static readonly int DeadHash = Animator.StringToHash("Dead");
 
     protected override void Awake()
     {
@@ -114,6 +119,9 @@ public class PlayerController : Entity
 
     private void Update()
     {
+        if (_invulnerableTimer > 0f)
+            _invulnerableTimer -= Time.deltaTime;
+
         if (!_controlEnabled || GameManager.IsMenuOpen || Time.timeScale <= 0f) return;
 
         // CAMBIO: el cuerpo gira hacia donde camina, salvo que esté apuntando (click derecho mantenido):
@@ -444,10 +452,27 @@ public class PlayerController : Entity
         return _shootPoint != null ? _shootPoint : transform;
     }
 
-    // Piso el Die de Entity: descuento 1 vida; si me quedan vidas hago respawn, si llegué a 0 aviso derrota
+    public override void TakeDamage(float amount)
+    {
+        // Si recién respawneó, tiene unos segundos de escudo invulnerable para no recibir daño al instante
+        if (_invulnerableTimer > 0f) return;
+        base.TakeDamage(amount);
+    }
+
+    // Piso el Die de Entity: reproduzco la animación de muerte, descuento 1 vida y hago transición de respawn (o derrota)
     protected override void Die()
     {
         _controlEnabled = false;
+        _isAiming = false;
+        UpdateWeaponVisibility();
+        _currentVelocity = Vector3.zero;
+        if (_rb != null)
+            _rb.linearVelocity = Vector3.zero;
+
+        SetAnimFloat(SpeedHash, 0f);
+        SetAnimBool(AimingHash, false);
+        SetAnimBool(DeadHash, true);
+
         _currentLives = Mathf.Max(0, _currentLives - 1);
         OnLivesChanged?.Invoke(_currentLives, _maxLives);
 
@@ -457,26 +482,347 @@ public class PlayerController : Entity
         }
         else
         {
-            OnOutOfLives?.Invoke();
+            StartCoroutine(OutOfLivesAfterDeathAnimRoutine());
         }
+    }
+
+    private IEnumerator OutOfLivesAfterDeathAnimRoutine()
+    {
+        // Dejo que se vea la animación de caída completa antes de mostrar el cartel de derrota
+        yield return new WaitForSeconds(Mathf.Max(2.0f, _respawnDelay));
+        OnOutOfLives?.Invoke();
     }
 
     private IEnumerator RespawnAfterDelay()
     {
-        yield return new WaitForSeconds(_respawnDelay);
-        Respawn();
+        // 1) Se ve la animación de la veterinaria cayendo al piso en el lugar
+        yield return new WaitForSeconds(Mathf.Max(1.8f, _respawnDelay));
+
+        // 2) Fundido suave a oscuro para que no sea un salto brusco de cámara ni de posición
+        EnsureRespawnFadeUI();
+        if (_respawnFadeText != null)
+            _respawnFadeText.text = $"REINGRESANDO A LA CLÍNICA...\n♥ Vidas restantes: {_currentLives} / {_maxLives}";
+
+        yield return StartCoroutine(AnimateRespawnFade(0f, 0.94f, 0.38f));
+
+        // 3) Mientras la pantalla está oscura, la reposiciono en la entrada, centro la cámara y la pongo de pie
+        RespawnAtSpawnPoint();
+        yield return new WaitForSeconds(0.18f);
+
+        // 4) Fundido de regreso a la clínica + onda expansiva + parpadeo de invulnerabilidad temporal
+        StartCoroutine(PlayRespawnRingAndBlinkRoutine());
+        yield return StartCoroutine(AnimateRespawnFade(0.94f, 0f, 0.42f));
     }
 
-    private void Respawn()
+    private void RespawnAtSpawnPoint()
     {
-        // Le vuelvo a dar toda la vida y lo dejo quieto
         ResetHealth();
         _currentVelocity = Vector3.zero;
+        if (_rb != null)
+            _rb.linearVelocity = Vector3.zero;
 
-        // Lo mando al punto de spawn pero respetando la Y del piso por si el SpawnPoint quedó alto en la escena
+        SetAnimBool(DeadHash, false);
+        SetAnimFloat(SpeedHash, 0f);
+        if (_animator != null && _animator.runtimeAnimatorController != null)
+            _animator.Play("Idle", 0, 0f);
+
         Vector3 spawnPos = _spawnPoint != null ? _spawnPoint.position : Vector3.zero;
         spawnPos.y = _groundY;
         transform.position = spawnPos;
+
+        // Centro la cámara en el punto de spawn durante el fundido para que no pegue un latigazo cruzando el mapa
+        if (_cam == null) _cam = Camera.main;
+        if (_cam != null)
+        {
+            CameraFollow camFollow = _cam.GetComponent<CameraFollow>();
+            if (camFollow != null)
+                camFollow.SnapToTarget();
+        }
+
+        // Empujo hacia atrás a cualquier gato corrupto que haya quedado cerca del spawn para que no la embosquen al nacer
+        Collider[] nearby = Physics.OverlapSphere(spawnPos, 3.8f);
+        foreach (Collider col in nearby)
+        {
+            Enemy enemy = col.GetComponentInParent<Enemy>();
+            if (enemy != null && !enemy.IsDead)
+            {
+                Vector3 pushDir = enemy.transform.position - spawnPos;
+                pushDir.y = 0f;
+                if (pushDir.sqrMagnitude < 0.01f) pushDir = transform.forward;
+                enemy.ApplyKnockback(pushDir.normalized, 2.2f, 0.8f);
+            }
+        }
+
+        _invulnerableTimer = _respawnInvulnerabilityDuration;
         _controlEnabled = true;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlayHeal();
+    }
+
+    private void EnsureRespawnFadeUI()
+    {
+        if (_respawnFadeGroup != null) return;
+
+        Canvas canvas = FindFirstObjectByType<Canvas>();
+        if (canvas == null) return;
+
+        GameObject overlayObj = new GameObject("RespawnTransitionOverlay");
+        overlayObj.transform.SetParent(canvas.transform, false);
+        RectTransform rt = overlayObj.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+
+        UnityEngine.UI.Image bg = overlayObj.AddComponent<UnityEngine.UI.Image>();
+        bg.color = new Color(0.03f, 0.04f, 0.08f, 1f);
+        bg.raycastTarget = false;
+
+        _respawnFadeGroup = overlayObj.AddComponent<CanvasGroup>();
+        _respawnFadeGroup.alpha = 0f;
+        _respawnFadeGroup.blocksRaycasts = false;
+        _respawnFadeGroup.interactable = false;
+
+        GameObject txtObj = new GameObject("RespawnBannerText");
+        txtObj.transform.SetParent(overlayObj.transform, false);
+        RectTransform txtRt = txtObj.AddComponent<RectTransform>();
+        txtRt.anchorMin = new Vector2(0.5f, 0.5f);
+        txtRt.anchorMax = new Vector2(0.5f, 0.5f);
+        txtRt.sizeDelta = new Vector2(700f, 120f);
+
+        _respawnFadeText = txtObj.AddComponent<UnityEngine.UI.Text>();
+        _respawnFadeText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _respawnFadeText.fontSize = 28;
+        _respawnFadeText.fontStyle = FontStyle.Bold;
+        _respawnFadeText.alignment = TextAnchor.MiddleCenter;
+        _respawnFadeText.color = new Color(0.45f, 1f, 0.88f, 1f);
+        _respawnFadeText.raycastTarget = false;
+    }
+
+    private IEnumerator AnimateRespawnFade(float from, float to, float duration)
+    {
+        if (_respawnFadeGroup == null) yield break;
+        _respawnFadeGroup.gameObject.SetActive(true);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            _respawnFadeGroup.alpha = Mathf.Lerp(from, to, Mathf.Clamp01(elapsed / duration));
+            yield return null;
+        }
+        _respawnFadeGroup.alpha = to;
+        if (to <= 0.001f)
+            _respawnFadeGroup.gameObject.SetActive(false);
+    }
+
+    // Onda expansiva turquesa en el piso + parpadeo clásico de invulnerabilidad durante _respawnInvulnerabilityDuration
+    private IEnumerator PlayRespawnRingAndBlinkRoutine()
+    {
+        // Aro expansivo en el piso al aparecer
+        GameObject ringObj = new GameObject("RespawnPulseRing");
+        LineRenderer lr = ringObj.AddComponent<LineRenderer>();
+        lr.useWorldSpace = true;
+        lr.loop = true;
+        lr.positionCount = 32;
+        lr.startWidth = 0.14f;
+        lr.endWidth = 0.14f;
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.receiveShadows = false;
+        Shader sh = Shader.Find("Sprites/Default");
+        if (sh != null) lr.material = new Material(sh);
+
+        Renderer[] playerRenderers = _animator != null
+            ? _animator.GetComponentsInChildren<Renderer>(true)
+            : GetComponentsInChildren<Renderer>(true);
+
+        float duration = Mathf.Max(0.5f, _respawnInvulnerabilityDuration);
+        float elapsed = 0f;
+        const float ringDuration = 0.65f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+
+            // 1) Actualizar onda expansiva durante los primeros 0.65s
+            if (ringObj != null)
+            {
+                if (elapsed <= ringDuration)
+                {
+                    float t = elapsed / ringDuration;
+                    float radius = Mathf.Lerp(0.25f, 2.6f, 1f - Mathf.Pow(1f - t, 3f));
+                    Color ringCol = new Color(0.25f, 1f, 0.85f, 1f - t);
+                    lr.startColor = ringCol;
+                    lr.endColor = ringCol;
+                    lr.startWidth = Mathf.Lerp(0.16f, 0.02f, t);
+                    lr.endWidth = lr.startWidth;
+
+                    Vector3 center = new Vector3(transform.position.x, transform.position.y + 0.06f, transform.position.z);
+                    for (int i = 0; i < 32; i++)
+                    {
+                        float ang = (i / 32f) * Mathf.PI * 2f;
+                        lr.SetPosition(i, center + new Vector3(Mathf.Cos(ang) * radius, 0f, Mathf.Sin(ang) * radius));
+                    }
+                }
+                else
+                {
+                    Destroy(ringObj);
+                }
+            }
+
+            // 2) Parpadeo clásico de escudo de invulnerabilidad en el modelo de la veterinaria
+            bool visiblePhase = Mathf.FloorToInt(elapsed * 11f) % 2 == 0;
+            for (int i = 0; i < playerRenderers.Length; i++)
+            {
+                if (playerRenderers[i] != null)
+                    playerRenderers[i].enabled = visiblePhase;
+            }
+
+            yield return null;
+        }
+
+        if (ringObj != null)
+            Destroy(ringObj);
+
+        for (int i = 0; i < playerRenderers.Length; i++)
+        {
+            if (playerRenderers[i] != null)
+                playerRenderers[i].enabled = true;
+        }
     }
 }
+
+#if UNITY_EDITOR
+// Configura automáticamente el parámetro "Dead" y el estado con la animación de muerte en PlayerAnimator.controller
+public static class PlayerDeathAnimatorSetup
+{
+    private const string ControllerPath = "Assets/Animations/PlayerAnimator.controller";
+    private const string DeathFbxPath = "Assets/Models/muriendoanim/Meshy_AI_vet_female_rigged_20261029_animated_mixamo_without_skin_Dead/Meshy_AI_vet_female_rigged_20261029_animated_mixamo_without_skin_Dead.fbx";
+
+    [UnityEditor.InitializeOnLoadMethod]
+    private static void SetupDeathStateIfNeeded()
+    {
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            // 0) Asegurar que el FBX de muerte esté configurado como Humanoid (igual que el resto de las animaciones de la veterinaria)
+            // porque si queda en Generic, al entrar al estado Dead la veterinaria queda dura parada y enterrada hasta la cintura.
+            var importer = UnityEditor.AssetImporter.GetAtPath(DeathFbxPath) as UnityEditor.ModelImporter;
+            if (importer != null)
+            {
+                bool reimportNeeded = false;
+                if (importer.animationType != UnityEditor.ModelImporterAnimationType.Human ||
+                    importer.avatarSetup != UnityEditor.ModelImporterAvatarSetup.CreateFromThisModel)
+                {
+                    importer.animationType = UnityEditor.ModelImporterAnimationType.Human;
+                    importer.avatarSetup = UnityEditor.ModelImporterAvatarSetup.CreateFromThisModel;
+                    importer.SaveAndReimport();
+                }
+
+                var clips = importer.clipAnimations;
+                if (clips == null || clips.Length == 0)
+                {
+                    clips = importer.defaultClipAnimations;
+                    reimportNeeded = true;
+                }
+
+                if (clips != null && clips.Length > 0)
+                {
+                    for (int i = 0; i < clips.Length; i++)
+                    {
+                        if (!clips[i].keepOriginalPositionY || clips[i].loopTime)
+                        {
+                            clips[i].keepOriginalPositionY = true;
+                            clips[i].keepOriginalOrientation = true;
+                            clips[i].keepOriginalPositionXZ = true;
+                            clips[i].heightFromFeet = false;
+                            clips[i].loopTime = false;
+                            reimportNeeded = true;
+                        }
+                    }
+                    if (reimportNeeded)
+                    {
+                        importer.clipAnimations = clips;
+                        importer.SaveAndReimport();
+                    }
+                }
+            }
+
+            var controller = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ControllerPath);
+            if (controller == null) return;
+
+            AnimationClip deathClip = null;
+            foreach (var asset in UnityEditor.AssetDatabase.LoadAllAssetsAtPath(DeathFbxPath))
+            {
+                if (asset is AnimationClip clip && !clip.name.StartsWith("__preview__"))
+                {
+                    deathClip = clip;
+                    break;
+                }
+            }
+            if (deathClip == null) return;
+
+            bool dirty = false;
+
+            // 1) Asegurar parámetro Bool "Dead"
+            bool hasDeadParam = false;
+            foreach (var p in controller.parameters)
+            {
+                if (p.name == "Dead")
+                {
+                    hasDeadParam = true;
+                    break;
+                }
+            }
+            if (!hasDeadParam)
+            {
+                controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
+                dirty = true;
+            }
+
+            // 2) Asegurar estado "Dead" en Base Layer con transición desde AnyState (Dead=true) y vuelta a Idle (Dead=false)
+            var rootSm = controller.layers[0].stateMachine;
+            UnityEditor.Animations.AnimatorState deadState = null;
+            UnityEditor.Animations.AnimatorState idleState = null;
+            foreach (var child in rootSm.states)
+            {
+                if (child.state.name == "Dead") deadState = child.state;
+                if (child.state.name == "Idle") idleState = child.state;
+            }
+
+            if (deadState == null)
+            {
+                deadState = rootSm.AddState("Dead", new Vector3(290f, 230f, 0f));
+                deadState.motion = deathClip;
+                deadState.writeDefaultValues = true;
+
+                var toDead = rootSm.AddAnyStateTransition(deadState);
+                toDead.hasExitTime = false;
+                toDead.hasFixedDuration = true;
+                toDead.duration = 0.12f;
+                toDead.canTransitionToSelf = false;
+                toDead.AddCondition(UnityEditor.Animations.AnimatorConditionMode.If, 0f, "Dead");
+
+                if (idleState != null)
+                {
+                    var toIdle = deadState.AddTransition(idleState);
+                    toIdle.hasExitTime = false;
+                    toIdle.hasFixedDuration = true;
+                    toIdle.duration = 0.12f;
+                    toIdle.AddCondition(UnityEditor.Animations.AnimatorConditionMode.IfNot, 0f, "Dead");
+                }
+                dirty = true;
+            }
+            else if (deadState.motion != deathClip)
+            {
+                deadState.motion = deathClip;
+                dirty = true;
+            }
+
+            if (dirty)
+            {
+                UnityEditor.EditorUtility.SetDirty(controller);
+                UnityEditor.AssetDatabase.SaveAssets();
+            }
+        };
+    }
+}
+#endif
