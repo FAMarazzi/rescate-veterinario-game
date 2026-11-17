@@ -75,8 +75,10 @@ public class PlayerController : Entity
     private bool _isAiming; // true mientras mantengo el click derecho
     private Vector3 _aimPoint; // el punto del piso donde está el mouse, el dardo va hacia ahí
     private float _groundY; // me guardo la altura inicial del piso para que al respawnear no quede flotando
+    private Vector3 _initialModelLocalPos;
     private CanvasGroup _respawnFadeGroup;
     private UnityEngine.UI.Text _respawnFadeText;
+    private static readonly RaycastHit[] _interactRayHits = new RaycastHit[12];
 
     // Hasheo los nombres de los parámetros del Animator (es más rápido que usar strings)
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
@@ -112,6 +114,7 @@ public class PlayerController : Entity
         _cam = Camera.main;
         if (_shootPoint == null) _shootPoint = transform; // si no puse punto de disparo, salen desde el centro
         if (_animator == null) _animator = GetComponentInChildren<Animator>();
+        if (_animator != null) _initialModelLocalPos = _animator.transform.localPosition;
 
         // Arranco con el arma guardada en el bolsillo
         UpdateWeaponVisibility();
@@ -157,7 +160,13 @@ public class PlayerController : Entity
             IInteractable interactable = hit.GetComponentInParent<IInteractable>();
             if (interactable != null)
             {
-                float d = Vector3.Distance(transform.position, hit.transform.position);
+                if (interactable is MedicineCabinet cab && !cab.CanInteractWith(transform.position))
+                    continue;
+
+                if (IsBlockedByWall(hit.bounds.center))
+                    continue;
+
+                float d = Vector3.Distance(transform.position, hit.bounds.center);
                 if (d < minDist)
                 {
                     minDist = d;
@@ -168,6 +177,26 @@ public class PlayerController : Entity
 
         if (closest != null)
             closest.Interact(this);
+    }
+
+    private bool IsBlockedByWall(Vector3 targetCenter)
+    {
+        Vector3 start = new Vector3(transform.position.x, 0.85f, transform.position.z);
+        Vector3 end = new Vector3(targetCenter.x, 0.85f, targetCenter.z);
+        Vector3 dir = end - start;
+        float dist = dir.magnitude;
+        if (dist < 0.05f) return false;
+
+        int count = Physics.RaycastNonAlloc(start, dir / dist, _interactRayHits, dist);
+        for (int i = 0; i < count; i++)
+        {
+            Collider c = _interactRayHits[i].collider;
+            if (c == null || c.isTrigger) continue;
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            if (c.name.StartsWith("Pared"))
+                return true;
+        }
+        return false;
     }
 
     public void AddMedkit(int count = 1)
@@ -473,6 +502,23 @@ public class PlayerController : Entity
         SetAnimBool(AimingHash, false);
         SetAnimBool(DeadHash, true);
 
+        // Alejo un poquito a los gatos que estaban pegados para que el cuerpo de la veterinaria no caiga encima de un michi
+        Collider[] closeCats = Physics.OverlapSphere(transform.position, 2.1f);
+        foreach (Collider col in closeCats)
+        {
+            Enemy enemy = col.GetComponentInParent<Enemy>();
+            if (enemy != null && !enemy.IsDead)
+            {
+                Vector3 pushDir = enemy.transform.position - transform.position;
+                pushDir.y = 0f;
+                if (pushDir.sqrMagnitude < 0.01f) pushDir = -transform.forward;
+                enemy.ApplyKnockback(pushDir.normalized, 1.8f, 1.1f);
+            }
+        }
+
+        // Bajo suavemente solo el modelo visual (_animator.transform) para que quede bien apoyada en el piso sin tocar su CapsuleCollider
+        StartCoroutine(KeepDeadModelOnFloorRoutine());
+
         _currentLives = Mathf.Max(0, _currentLives - 1);
         OnLivesChanged?.Invoke(_currentLives, _maxLives);
 
@@ -483,6 +529,42 @@ public class PlayerController : Entity
         else
         {
             StartCoroutine(OutOfLivesAfterDeathAnimRoutine());
+        }
+    }
+
+    private IEnumerator KeepDeadModelOnFloorRoutine()
+    {
+        if (_animator == null) yield break;
+        SkinnedMeshRenderer[] smrs = _animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        if (smrs == null || smrs.Length == 0) yield break;
+
+        // Espero un instante mientras empieza la caída y después apoyo el punto más bajo de su malla al ras del piso (y = 0.02)
+        yield return new WaitForSeconds(0.25f);
+        while (_isDead && _animator != null)
+        {
+            float minY = float.MaxValue;
+            bool found = false;
+            for (int i = 0; i < smrs.Length; i++)
+            {
+                if (smrs[i] != null && smrs[i].enabled)
+                {
+                    if (smrs[i].bounds.min.y < minY)
+                    {
+                        minY = smrs[i].bounds.min.y;
+                        found = true;
+                    }
+                }
+            }
+
+            if (found)
+            {
+                float targetFloorY = 0.02f;
+                float diff = targetFloorY - minY;
+                Vector3 pos = _animator.transform.position;
+                pos.y = Mathf.Lerp(pos.y, pos.y + diff, 14f * Time.deltaTime);
+                _animator.transform.position = pos;
+            }
+            yield return null;
         }
     }
 
@@ -523,8 +605,12 @@ public class PlayerController : Entity
 
         SetAnimBool(DeadHash, false);
         SetAnimFloat(SpeedHash, 0f);
-        if (_animator != null && _animator.runtimeAnimatorController != null)
-            _animator.Play("Idle", 0, 0f);
+        if (_animator != null)
+        {
+            _animator.transform.localPosition = _initialModelLocalPos;
+            if (_animator.runtimeAnimatorController != null)
+                _animator.Play("Idle", 0, 0f);
+        }
 
         Vector3 spawnPos = _spawnPoint != null ? _spawnPoint.position : Vector3.zero;
         spawnPos.y = _groundY;
@@ -728,8 +814,9 @@ public static class PlayerDeathAnimatorSetup
                 {
                     for (int i = 0; i < clips.Length; i++)
                     {
-                        if (!clips[i].keepOriginalPositionY || clips[i].loopTime)
+                        if (!clips[i].keepOriginalPositionY || !clips[i].lockRootHeightY || clips[i].loopTime)
                         {
+                            clips[i].lockRootHeightY = true;
                             clips[i].keepOriginalPositionY = true;
                             clips[i].keepOriginalOrientation = true;
                             clips[i].keepOriginalPositionXZ = true;

@@ -20,9 +20,13 @@ public class MedicineCabinet : MonoBehaviour, IInteractable
 
     private Transform _player;
     private GameObject _promptObj;
+    private Collider _myCollider;
+    private Vector3 _frontDir = Vector3.forward;
+    private static readonly RaycastHit[] _rayHits = new RaycastHit[12];
 
     private void Awake()
     {
+        _myCollider = GetComponentInChildren<Collider>();
         CreatePromptLabel();
     }
 
@@ -30,24 +34,107 @@ public class MedicineCabinet : MonoBehaviour, IInteractable
     {
         PlayerController pc = FindFirstObjectByType<PlayerController>();
         if (pc != null) _player = pc.transform;
+        DetectFrontDirection();
+    }
+
+    private void DetectFrontDirection()
+    {
+        // En el FBX del armario (Z-up), el frente apunta hacia -transform.up en el plano XZ
+        Vector3 candidate = new Vector3(-transform.up.x, 0f, -transform.up.z);
+        if (candidate.sqrMagnitude < 0.01f)
+            candidate = new Vector3(transform.forward.x, 0f, transform.forward.z);
+        if (candidate.sqrMagnitude > 0.01f)
+            _frontDir = candidate.normalized;
+
+        // Si el armario está apoyado contra una pared, el frente real es siempre el lado opuesto a esa pared
+        Vector3 center = GetCabinetCenter();
+        Vector3 origin = new Vector3(center.x, 0.8f, center.z);
+        Vector3[] dirs =
+        {
+            -_frontDir,
+            _frontDir,
+            new Vector3(transform.right.x, 0f, transform.right.z).normalized,
+            new Vector3(-transform.right.x, 0f, -transform.right.z).normalized
+        };
+
+        float closestWall = 1.35f;
+        for (int d = 0; d < dirs.Length; d++)
+        {
+            if (dirs[d].sqrMagnitude < 0.01f) continue;
+            int count = Physics.RaycastNonAlloc(origin, dirs[d], _rayHits, 1.35f);
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = _rayHits[i].collider;
+                if (c == null || c.isTrigger || c.transform.IsChildOf(transform)) continue;
+                if (c.name.StartsWith("Pared") && _rayHits[i].distance < closestWall)
+                {
+                    closestWall = _rayHits[i].distance;
+                    _frontDir = -dirs[d];
+                }
+            }
+        }
+    }
+
+    private Vector3 GetCabinetCenter()
+    {
+        return _myCollider != null ? _myCollider.bounds.center : transform.position;
+    }
+
+    /// <summary>
+    /// Verifica que la veterinaria esté a distancia, del lado de ADELANTE del armario y sin ninguna pared en el medio.
+    /// </summary>
+    public bool CanInteractWith(Vector3 playerPos)
+    {
+        if (_medkitsInside <= 0) return false;
+
+        Vector3 cabCenter = GetCabinetCenter();
+        Vector3 toPlayer = playerPos - cabCenter;
+        toPlayer.y = 0f;
+
+        float dist = toPlayer.magnitude;
+        if (dist > _promptShowDistance || dist < 0.001f) return false;
+
+        // 1) No permitir agarrar desde atrás ni de costado trasero del armario
+        if (Vector3.Dot(toPlayer / dist, _frontDir) < 0.15f)
+            return false;
+
+        // 2) No permitir agarrar a través de una pared
+        Vector3 rayStart = new Vector3(cabCenter.x, 0.85f, cabCenter.z);
+        Vector3 rayEnd = new Vector3(playerPos.x, 0.85f, playerPos.z);
+        Vector3 rayDir = rayEnd - rayStart;
+        float rayLen = rayDir.magnitude;
+        if (rayLen > 0.05f)
+        {
+            int count = Physics.RaycastNonAlloc(rayStart, rayDir / rayLen, _rayHits, rayLen);
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = _rayHits[i].collider;
+                if (c == null || c.isTrigger) continue;
+                if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+                if (_player != null && (c.transform == _player || c.transform.IsChildOf(_player))) continue;
+                if (c.name.StartsWith("Pared"))
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private void Update()
     {
         if (_medkitsInside <= 0 || _promptObj == null || _player == null) return;
 
-        float dist = Vector3.Distance(transform.position, _player.position);
-        bool near = dist <= _promptShowDistance;
-        if (_promptObj.activeSelf != near)
-            _promptObj.SetActive(near);
+        bool canUse = CanInteractWith(_player.position);
+        if (_promptObj.activeSelf != canUse)
+            _promptObj.SetActive(canUse);
 
-        if (near && Camera.main != null)
+        if (canUse && Camera.main != null)
             _promptObj.transform.rotation = Camera.main.transform.rotation;
     }
 
     public void Interact(PlayerController player)
     {
-        if (_medkitsInside <= 0) return;
+        if (_medkitsInside <= 0 || player == null || !CanInteractWith(player.transform.position)) return;
 
         _medkitsInside--;
         player.AddMedkit(1);
