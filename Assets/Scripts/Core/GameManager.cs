@@ -29,7 +29,8 @@ public class GameManager : MonoBehaviour
             (Instance._titleMenuPanel != null && Instance._titleMenuPanel.activeSelf) ||
             (Instance._introStoryPanel != null && Instance._introStoryPanel.activeSelf) ||
             (Instance._pauseMenuPanel != null && Instance._pauseMenuPanel.activeSelf) ||
-            (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf)
+            (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf) ||
+            (Instance._gameOverScreenPanel != null && Instance._gameOverScreenPanel.activeSelf)
         );
 
     private static bool _hasShownTitleThisSession = false;
@@ -46,6 +47,11 @@ public class GameManager : MonoBehaviour
     [Header("Sprites de Pantalla de Créditos (Assets/Creditos)")]
     [SerializeField] private Sprite _creditsBackgroundSprite;
     [SerializeField] private Sprite _btnVolverSprite;
+
+    [Header("Sprites de Pantalla de Game Over (Assets/GameOver)")]
+    [SerializeField] private Sprite _gameOverBackgroundSprite;
+    [SerializeField] private Sprite _btnReintentarGameOverSprite;
+    [SerializeField] private Sprite _btnMenuPrincipalGameOverSprite;
 
     [Header("Sprite Opcional de Historia / Intro")]
     [SerializeField] private Sprite _introBackgroundSprite;
@@ -71,6 +77,7 @@ public class GameManager : MonoBehaviour
 
     // Pantalla de Fin de Partida (Victoria / Derrota)
     private GameObject _endScreenPanel;
+    private GameObject _gameOverScreenPanel;
     private Text _endTitleText;
     private Text _endSubtitleText;
     private Image _endPanelBg;
@@ -217,6 +224,13 @@ public class GameManager : MonoBehaviour
             _creditsBackgroundSprite = LoadSpriteFromAssetFolder("Creditos", "Fondo Créditos del Rescate Veterinario.png");
         if (_btnVolverSprite == null)
             _btnVolverSprite = LoadSpriteFromAssetFolder("Creditos", "Botón de papel rasgado “Volver”.png");
+
+        if (_gameOverBackgroundSprite == null)
+            _gameOverBackgroundSprite = LoadSpriteFromAssetFolder("GameOver", "Pantalla Game Over de Rescate Veterinario.png");
+        if (_btnReintentarGameOverSprite == null)
+            _btnReintentarGameOverSprite = LoadSpriteFromAssetFolder("GameOver", "Botón Reintentar con Huellas.png");
+        if (_btnMenuPrincipalGameOverSprite == null)
+            _btnMenuPrincipalGameOverSprite = LoadSpriteFromAssetFolder("GameOver", "Botón de Menú Principal Neón.png");
     }
 
     private Sprite LoadSpriteFromAssetFolder(string folderName, string fileName)
@@ -498,6 +512,14 @@ public class GameManager : MonoBehaviour
 
     private void ShowEndScreen(bool victory, string title, string subtitle)
     {
+        if (!victory && _gameOverScreenPanel != null)
+        {
+            if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
+            _gameOverScreenPanel.SetActive(true);
+            Time.timeScale = 0f;
+            return;
+        }
+
         if (_endScreenPanel == null) return;
 
         _endScreenPanel.SetActive(true);
@@ -514,6 +536,7 @@ public class GameManager : MonoBehaviour
     {
         if (_titleMenuPanel == null) return;
         if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
+        if (_gameOverScreenPanel != null) _gameOverScreenPanel.SetActive(false);
         if (_pauseMenuPanel != null) _pauseMenuPanel.SetActive(false);
         if (_introStoryPanel != null) _introStoryPanel.SetActive(false);
 
@@ -841,14 +864,71 @@ public class GameManager : MonoBehaviour
 
         _endScreenPanel.SetActive(false);
 
-        // 5. MENÚ DE PAUSA INDEPENDIENTE (ESC)
+        // 5. PANTALLA DE GAME OVER ILUSTRADA (Assets/GameOver)
+        BuildGameOverScreen(canvasObj.transform, defaultFont);
+
+        // 6. MENÚ DE PAUSA INDEPENDIENTE (ESC)
         BuildPauseMenu(canvasObj.transform, defaultFont);
 
-        // 6. PANTALLA DE HISTORIA / INFORME DE EMERGENCIA (Al darle Jugar desde el Menú)
+        // 7. PANTALLA DE HISTORIA / INFORME DE EMERGENCIA (Al darle Jugar desde el Menú)
         BuildIntroStoryPanel(canvasObj.transform, defaultFont);
 
-        // 7. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
+        // 8. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
         BuildTitleMenu(canvasObj.transform, defaultFont);
+    }
+
+    private void BuildGameOverScreen(Transform canvasTransform, Font font)
+    {
+        RectTransform goRect = CreatePanel(canvasTransform, "Panel_PantallaGameOver",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, Color.white);
+        _gameOverScreenPanel = goRect.gameObject;
+
+        Image bgImg = goRect.GetComponent<Image>();
+        if (_gameOverBackgroundSprite != null)
+        {
+            bgImg.sprite = _gameOverBackgroundSprite;
+            bgImg.color = Color.white;
+            bgImg.preserveAspect = false;
+        }
+        else
+        {
+            bgImg.color = new Color(0.14f, 0.04f, 0.16f, 0.98f);
+        }
+
+        // 1) Botón "Reintentar" (Dorado/Ámbar con huellas):
+        //    - Hover (110%): Dorado solar brillante (#FFC92E) manteniendo huellas e ícono/texto nítidos
+        //    - Click/Presionado (105%): Naranja ámbar profundo (#EB8214)
+        CreateSpriteMenuButton(
+            goRect,
+            "Btn_GameOver_Reintentar",
+            _btnReintentarGameOverSprite,
+            font,
+            "↻  Reintentar",
+            new Vector2(28f, -142f),
+            new Vector2(560f, 187f),
+            RestartLevel,
+            new Color(1.00f, 0.79f, 0.18f),
+            new Color(0.92f, 0.51f, 0.08f)
+        );
+
+        // 2) Botón "Menú Principal" (Rosa/Neón):
+        //    - Hover (110%): Rosa/Magenta neón intenso (#FF6BE8) manteniendo ícono de casita y texto negros
+        //    - Click/Presionado (105%): Magenta violeta profundo (#CC2EA8)
+        CreateSpriteMenuButton(
+            goRect,
+            "Btn_GameOver_MenuPrincipal",
+            _btnMenuPrincipalGameOverSprite,
+            font,
+            "⌂  Menú Principal",
+            new Vector2(28f, -252f),
+            new Vector2(495f, 165f),
+            ReturnToMainMenu,
+            new Color(1.00f, 0.42f, 0.91f),
+            new Color(0.80f, 0.18f, 0.66f)
+        );
+
+        _gameOverScreenPanel.SetActive(false);
     }
 
     private void BuildTitleMenu(Transform canvasTransform, Font font)
@@ -1074,6 +1154,15 @@ public class GameManager : MonoBehaviour
 
     private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
     {
+        CreateSpriteMenuButton(
+            parent, name, sprite, fallbackFont, fallbackLabel, anchoredPos, size, onClick,
+            new Color(0.38f, 1.00f, 0.88f),
+            new Color(0.18f, 0.83f, 0.71f)
+        );
+    }
+
+    private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick, Color hoverTint, Color pressedTint)
+    {
         GameObject btnObj = new GameObject(name);
         btnObj.transform.SetParent(parent, false);
 
@@ -1099,14 +1188,14 @@ public class GameManager : MonoBehaviour
         }
 
         Button btn = btnObj.AddComponent<Button>();
-        // Desactivamos la transición por defecto de Unity para que MenuButtonHover controle el cambio a turquesa y el escalado 110% / 105%
+        // Desactivamos la transición por defecto de Unity para que MenuButtonHover controle el cambio de color y el escalado 110% / 105%
         btn.transition = Selectable.Transition.None;
         btn.targetGraphic = img;
         btn.onClick.AddListener(onClick);
 
         MenuButtonHover hover = btnObj.AddComponent<MenuButtonHover>();
         if (sprite != null)
-            hover.SetBaseSprite(sprite);
+            hover.SetBaseSprite(sprite, hoverTint, pressedTint);
     }
 
     private Slider CreateVolumeSlider(Transform parent, float initialValue, Vector2 anchoredPos)
@@ -1237,6 +1326,7 @@ public class MenuBuildAssetsPostprocessor : UnityEditor.Build.IPostprocessBuildW
 
         CopyPngFolder("MainMenu", dataDir);
         CopyPngFolder("Creditos", dataDir);
+        CopyPngFolder("GameOver", dataDir);
     }
 
     private static void CopyPngFolder(string folderName, string dataDir)

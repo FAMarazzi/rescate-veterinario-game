@@ -39,10 +39,12 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
     private float _targetScaleMultiplier = 1.0f;
     private bool _isHovered;
     private bool _isPressed;
+    private Color _customHoverTint = new Color(0.38f, 1.00f, 0.88f);
+    private Color _customPressedTint = new Color(0.18f, 0.83f, 0.71f);
 
-    // Cache estático para no regenerar texturas si se reinicia la escena
-    private static readonly Dictionary<Texture2D, Sprite> HoverSpriteCache = new Dictionary<Texture2D, Sprite>();
-    private static readonly Dictionary<Texture2D, Sprite> PressedSpriteCache = new Dictionary<Texture2D, Sprite>();
+    // Cache estático por textura y color para no regenerar texturas si se reinicia la escena
+    private static readonly Dictionary<string, Sprite> HoverSpriteCache = new Dictionary<string, Sprite>();
+    private static readonly Dictionary<string, Sprite> PressedSpriteCache = new Dictionary<string, Sprite>();
 
     private void Awake()
     {
@@ -56,7 +58,17 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
     public void SetBaseSprite(Sprite sprite)
     {
+        SetBaseSprite(sprite, new Color(0.38f, 1.00f, 0.88f), new Color(0.18f, 0.83f, 0.71f));
+    }
+
+    public void SetBaseSprite(Sprite sprite, Color hoverTint, Color pressedTint)
+    {
         if (_image == null) _image = GetComponent<Image>();
+        _customHoverTint = hoverTint;
+        _customPressedTint = pressedTint;
+        _normalFallbackColor = new Color(hoverTint.r * 0.85f, hoverTint.g * 0.85f, hoverTint.b * 0.85f, 1f);
+        _hoverFallbackColor = hoverTint;
+        _pressedFallbackColor = pressedTint;
         _image.sprite = sprite;
         InitializeSprites();
         ApplyVisualState();
@@ -70,18 +82,18 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
         Texture2D srcTex = _normalSprite.texture;
         if (srcTex == null || !srcTex.isReadable) return;
 
-        if (!HoverSpriteCache.TryGetValue(srcTex, out _hoverSprite) || _hoverSprite == null)
+        string hoverKey = $"{srcTex.GetInstanceID()}_{ColorUtility.ToHtmlStringRGB(_customHoverTint)}";
+        if (!HoverSpriteCache.TryGetValue(hoverKey, out _hoverSprite) || _hoverSprite == null)
         {
-            // Transforma el papel beige en menta/turquesa brillante (#60FFE0) conservando texto/ícono negro y relieves
-            _hoverSprite = CreateTintedButtonSprite(_normalSprite, new Color(0.38f, 1.00f, 0.88f), "_HoverMint");
-            HoverSpriteCache[srcTex] = _hoverSprite;
+            _hoverSprite = CreateTintedButtonSprite(_normalSprite, _customHoverTint, "_Hover");
+            HoverSpriteCache[hoverKey] = _hoverSprite;
         }
 
-        if (!PressedSpriteCache.TryGetValue(srcTex, out _pressedSprite) || _pressedSprite == null)
+        string pressedKey = $"{srcTex.GetInstanceID()}_{ColorUtility.ToHtmlStringRGB(_customPressedTint)}";
+        if (!PressedSpriteCache.TryGetValue(pressedKey, out _pressedSprite) || _pressedSprite == null)
         {
-            // Transforma el papel beige en turquesa más intenso/oscuro (#2ED4B6) para el estado presionado
-            _pressedSprite = CreateTintedButtonSprite(_normalSprite, new Color(0.18f, 0.83f, 0.71f), "_PressedTeal");
-            PressedSpriteCache[srcTex] = _pressedSprite;
+            _pressedSprite = CreateTintedButtonSprite(_normalSprite, _customPressedTint, "_Pressed");
+            PressedSpriteCache[pressedKey] = _pressedSprite;
         }
     }
 
@@ -123,6 +135,17 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
             if (maxChannel < 45)
             {
                 outPixels[i] = c;
+                continue;
+            }
+
+            // Si el botón tiene un detalle naranja saturado (como la huella izquierda y el borde de "Reintentar"),
+            // lo intensificamos en naranja rojizo cálido para que resalte nítido sobre el fondo dorado del hover/click
+            if (c.r > 190 && c.g < 145 && c.b < 45 && (c.r - c.g) > 65)
+            {
+                byte orR = (byte)Mathf.Clamp(c.r * 0.92f, 0f, 255f);
+                byte orG = (byte)Mathf.Clamp(c.g * 0.65f, 0f, 255f);
+                byte orB = (byte)Mathf.Clamp(c.b * 0.50f, 0f, 255f);
+                outPixels[i] = new Color32(orR, orG, orB, c.a);
                 continue;
             }
 
