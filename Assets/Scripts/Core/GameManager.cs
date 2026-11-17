@@ -765,18 +765,39 @@ public class GameManager : MonoBehaviour
             es.AddComponent<InputSystemUIInputModule>();
         }
 
-        GameObject canvasObj = new GameObject("HUD_Canvas");
-        canvasObj.transform.SetParent(transform);
-        Canvas canvas = canvasObj.AddComponent<Canvas>();
+        Transform existingCanvasTr = transform.Find("HUD_Canvas");
+        if (existingCanvasTr == null)
+        {
+            GameObject existingInScene = GameObject.Find("HUD_Canvas");
+            if (existingInScene != null)
+                existingCanvasTr = existingInScene.transform;
+        }
+
+        GameObject canvasObj;
+        if (existingCanvasTr != null)
+        {
+            canvasObj = existingCanvasTr.gameObject;
+            canvasObj.transform.SetParent(transform, false);
+        }
+        else
+        {
+            canvasObj = new GameObject("HUD_Canvas");
+            canvasObj.transform.SetParent(transform, false);
+        }
+
+        Canvas canvas = canvasObj.GetComponent<Canvas>();
+        if (canvas == null) canvas = canvasObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 50;
 
-        CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+        CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
+        if (scaler == null) scaler = canvasObj.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
 
-        canvasObj.AddComponent<GraphicRaycaster>();
+        if (canvasObj.GetComponent<GraphicRaycaster>() == null)
+            canvasObj.AddComponent<GraphicRaycaster>();
 
         Font defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (defaultFont == null)
@@ -791,14 +812,19 @@ public class GameManager : MonoBehaviour
             new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
             new Vector2(18f, -18f), new Vector2(394f, 36f), new Color(0.18f, 0.18f, 0.22f, 1f));
 
-        GameObject fillObj = new GameObject("HealthBar_Fill");
-        fillObj.transform.SetParent(hbBg, false);
-        RectTransform fillRect = fillObj.AddComponent<RectTransform>();
-        fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = new Vector2(3f, 3f);
-        fillRect.offsetMax = new Vector2(-3f, -3f);
-        _playerHealthFill = fillObj.AddComponent<Image>();
+        Transform existingFill = hbBg.Find("HealthBar_Fill");
+        GameObject fillObj = existingFill != null ? existingFill.gameObject : new GameObject("HealthBar_Fill");
+        if (existingFill == null)
+        {
+            fillObj.transform.SetParent(hbBg, false);
+            RectTransform fillRect = fillObj.AddComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = new Vector2(3f, 3f);
+            fillRect.offsetMax = new Vector2(-3f, -3f);
+        }
+        _playerHealthFill = fillObj.GetComponent<Image>();
+        if (_playerHealthFill == null) _playerHealthFill = fillObj.AddComponent<Image>();
         _playerHealthFill.color = new Color(0.2f, 0.9f, 0.45f);
 
         _playerHealthText = CreateText(hbBg, "Health_Text", defaultFont, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
@@ -837,7 +863,8 @@ public class GameManager : MonoBehaviour
         RectTransform notifPanel = CreatePanel(canvasObj.transform, "Panel_Notificacion",
             new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
             new Vector2(0f, -28f), new Vector2(780f, 54f), new Color(0.05f, 0.08f, 0.12f, 0.88f));
-        _notificationGroup = notifPanel.gameObject.AddComponent<CanvasGroup>();
+        _notificationGroup = notifPanel.gameObject.GetComponent<CanvasGroup>();
+        if (_notificationGroup == null) _notificationGroup = notifPanel.gameObject.AddComponent<CanvasGroup>();
         _notificationGroup.alpha = 0f;
 
         _notificationText = CreateText(notifPanel, "Notif_Text", defaultFont, 22, FontStyle.Bold, TextAnchor.MiddleCenter,
@@ -952,16 +979,21 @@ public class GameManager : MonoBehaviour
         }
 
         // LOGO OFICIAL ("Logo de Rescate Veterinario.png") arriba a la izquierda sobre la columna de botones
-        GameObject logoObj = new GameObject("Logo_RescateVeterinario");
-        logoObj.transform.SetParent(bgRect, false);
-        RectTransform logoRect = logoObj.AddComponent<RectTransform>();
-        logoRect.anchorMin = new Vector2(0.5f, 0.5f);
-        logoRect.anchorMax = new Vector2(0.5f, 0.5f);
-        logoRect.pivot = new Vector2(0.5f, 0.5f);
-        logoRect.anchoredPosition = new Vector2(-575f, 290f);
-        logoRect.sizeDelta = new Vector2(900f, 450f);
+        Transform existingLogo = bgRect.Find("Logo_RescateVeterinario");
+        GameObject logoObj = existingLogo != null ? existingLogo.gameObject : new GameObject("Logo_RescateVeterinario");
+        if (existingLogo == null)
+        {
+            logoObj.transform.SetParent(bgRect, false);
+            RectTransform logoRect = logoObj.AddComponent<RectTransform>();
+            logoRect.anchorMin = new Vector2(0.5f, 0.5f);
+            logoRect.anchorMax = new Vector2(0.5f, 0.5f);
+            logoRect.pivot = new Vector2(0.5f, 0.5f);
+            logoRect.anchoredPosition = new Vector2(-575f, 290f);
+            logoRect.sizeDelta = new Vector2(900f, 450f);
+        }
 
-        Image logoImg = logoObj.AddComponent<Image>();
+        Image logoImg = logoObj.GetComponent<Image>();
+        if (logoImg == null) logoImg = logoObj.AddComponent<Image>();
         logoImg.raycastTarget = false; // Para que sus esquinas transparentes nunca tapen el botón Jugar
         if (_menuLogoSprite != null)
         {
@@ -1103,14 +1135,20 @@ public class GameManager : MonoBehaviour
         _introAccentStripe = stripe.GetComponent<Image>();
 
         // Contenido animado de cada diapositiva
-        GameObject slideContent = new GameObject("Slide_Content");
-        slideContent.transform.SetParent(dossier, false);
-        RectTransform contentRect = slideContent.AddComponent<RectTransform>();
-        contentRect.anchorMin = Vector2.zero;
-        contentRect.anchorMax = Vector2.one;
-        contentRect.offsetMin = Vector2.zero;
-        contentRect.offsetMax = Vector2.zero;
-        _introSlideGroup = slideContent.AddComponent<CanvasGroup>();
+        Transform existingSlideContent = dossier.Find("Slide_Content");
+        GameObject slideContent = existingSlideContent != null ? existingSlideContent.gameObject : new GameObject("Slide_Content");
+        RectTransform contentRect = slideContent.GetComponent<RectTransform>();
+        if (existingSlideContent == null)
+        {
+            slideContent.transform.SetParent(dossier, false);
+            contentRect = slideContent.AddComponent<RectTransform>();
+            contentRect.anchorMin = Vector2.zero;
+            contentRect.anchorMax = Vector2.one;
+            contentRect.offsetMin = Vector2.zero;
+            contentRect.offsetMax = Vector2.zero;
+        }
+        _introSlideGroup = slideContent.GetComponent<CanvasGroup>();
+        if (_introSlideGroup == null) _introSlideGroup = slideContent.AddComponent<CanvasGroup>();
 
         _introStepText = CreateText(contentRect, "Intro_Step", font, 19, FontStyle.Bold, TextAnchor.MiddleCenter,
             new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -46f), new Vector2(-60f, 32f),
@@ -1128,11 +1166,14 @@ public class GameManager : MonoBehaviour
         RectTransform nextBtnRect = CreatePanel(dossier, "Btn_SiguienteIntro",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(-115f, -225f), new Vector2(390f, 62f), new Color(0.20f, 0.82f, 0.68f));
-        Button nextBtn = nextBtnRect.gameObject.AddComponent<Button>();
+        Button nextBtn = nextBtnRect.gameObject.GetComponent<Button>();
+        if (nextBtn == null) nextBtn = nextBtnRect.gameObject.AddComponent<Button>();
         nextBtn.transition = Selectable.Transition.None;
         nextBtn.targetGraphic = nextBtnRect.GetComponent<Image>();
+        nextBtn.onClick.RemoveAllListeners();
         nextBtn.onClick.AddListener(AdvanceIntroSlide);
-        nextBtnRect.gameObject.AddComponent<MenuButtonHover>();
+        if (nextBtnRect.gameObject.GetComponent<MenuButtonHover>() == null)
+            nextBtnRect.gameObject.AddComponent<MenuButtonHover>();
         _introNextBtnLabel = CreateText(nextBtnRect, "Label", font, 21, FontStyle.Bold, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white);
 
@@ -1140,11 +1181,14 @@ public class GameManager : MonoBehaviour
         RectTransform skipBtnRect = CreatePanel(dossier, "Btn_SaltarIntro",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(225f, -225f), new Vector2(210f, 62f), new Color(0.25f, 0.24f, 0.36f));
-        Button skipBtn = skipBtnRect.gameObject.AddComponent<Button>();
+        Button skipBtn = skipBtnRect.gameObject.GetComponent<Button>();
+        if (skipBtn == null) skipBtn = skipBtnRect.gameObject.AddComponent<Button>();
         skipBtn.transition = Selectable.Transition.None;
         skipBtn.targetGraphic = skipBtnRect.GetComponent<Image>();
+        skipBtn.onClick.RemoveAllListeners();
         skipBtn.onClick.AddListener(StartOrResumeGame);
-        skipBtnRect.gameObject.AddComponent<MenuButtonHover>();
+        if (skipBtnRect.gameObject.GetComponent<MenuButtonHover>() == null)
+            skipBtnRect.gameObject.AddComponent<MenuButtonHover>();
         CreateText(skipBtnRect, "Label", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white).text = "SALTAR  ⏭";
         _introSkipButtonObj = skipBtnRect.gameObject;
@@ -1163,43 +1207,64 @@ public class GameManager : MonoBehaviour
 
     private void CreateSpriteMenuButton(Transform parent, string name, Sprite sprite, Font fallbackFont, string fallbackLabel, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick, Color hoverTint, Color pressedTint)
     {
-        GameObject btnObj = new GameObject(name);
-        btnObj.transform.SetParent(parent, false);
+        Transform existing = parent.Find(name);
+        GameObject btnObj = existing != null ? existing.gameObject : new GameObject(name);
+        RectTransform rt = btnObj.GetComponent<RectTransform>();
+        if (existing == null)
+        {
+            btnObj.transform.SetParent(parent, false);
+            rt = btnObj.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta = size;
+        }
 
-        RectTransform rt = btnObj.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0.5f, 0.5f);
-        rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = anchoredPos;
-        rt.sizeDelta = size;
-
-        Image img = btnObj.AddComponent<Image>();
+        Image img = btnObj.GetComponent<Image>();
+        if (img == null) img = btnObj.AddComponent<Image>();
         if (sprite != null)
         {
             img.sprite = sprite;
             img.preserveAspect = true;
             img.color = Color.white;
         }
-        else
+        else if (existing == null)
         {
             img.color = new Color(0.88f, 0.80f, 0.77f, 1f);
             CreateText(rt, "Label", fallbackFont, 26, FontStyle.Bold, TextAnchor.MiddleCenter,
                 Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.black).text = fallbackLabel;
         }
 
-        Button btn = btnObj.AddComponent<Button>();
+        Button btn = btnObj.GetComponent<Button>();
+        if (btn == null) btn = btnObj.AddComponent<Button>();
         // Desactivamos la transición por defecto de Unity para que MenuButtonHover controle el cambio de color y el escalado 110% / 105%
         btn.transition = Selectable.Transition.None;
         btn.targetGraphic = img;
+        btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(onClick);
 
-        MenuButtonHover hover = btnObj.AddComponent<MenuButtonHover>();
+        MenuButtonHover hover = btnObj.GetComponent<MenuButtonHover>();
+        if (hover == null) hover = btnObj.AddComponent<MenuButtonHover>();
         if (sprite != null)
             hover.SetBaseSprite(sprite, hoverTint, pressedTint);
     }
 
     private Slider CreateVolumeSlider(Transform parent, float initialValue, Vector2 anchoredPos)
     {
+        Transform existing = parent.Find("Slider_Volumen");
+        if (existing != null)
+        {
+            Slider existingSlider = existing.GetComponent<Slider>();
+            if (existingSlider != null)
+            {
+                existingSlider.SetValueWithoutNotify(initialValue);
+                existingSlider.onValueChanged.RemoveAllListeners();
+                existingSlider.onValueChanged.AddListener(OnVolumeSliderChanged);
+                return existingSlider;
+            }
+        }
+
         GameObject sliderObj = new GameObject("Slider_Volumen");
         sliderObj.transform.SetParent(parent, false);
         RectTransform sliderRect = sliderObj.AddComponent<RectTransform>();
@@ -1253,6 +1318,15 @@ public class GameManager : MonoBehaviour
 
     private RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color bgColor)
     {
+        Transform existing = parent.Find(name);
+        if (existing != null)
+        {
+            RectTransform existingRt = existing.GetComponent<RectTransform>();
+            if (existing.GetComponent<Image>() == null)
+                existing.gameObject.AddComponent<Image>().color = bgColor;
+            return existingRt;
+        }
+
         GameObject panelObj = new GameObject(name);
         panelObj.transform.SetParent(parent, false);
         RectTransform rt = panelObj.AddComponent<RectTransform>();
@@ -1269,6 +1343,13 @@ public class GameManager : MonoBehaviour
 
     private Text CreateText(Transform parent, string name, Font font, int fontSize, FontStyle style, TextAnchor align, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 sizeDelta, Color color)
     {
+        Transform existing = parent.Find(name);
+        if (existing != null)
+        {
+            Text existingTxt = existing.GetComponent<Text>();
+            if (existingTxt != null) return existingTxt;
+        }
+
         GameObject txtObj = new GameObject(name);
         txtObj.transform.SetParent(parent, false);
         RectTransform rt = txtObj.AddComponent<RectTransform>();
@@ -1295,16 +1376,65 @@ public class GameManager : MonoBehaviour
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             anchoredPos, size, color);
 
-        Button btn = btnRect.gameObject.AddComponent<Button>();
+        Button btn = btnRect.gameObject.GetComponent<Button>();
+        if (btn == null) btn = btnRect.gameObject.AddComponent<Button>();
         btn.transition = Selectable.Transition.None;
         btn.targetGraphic = btnRect.GetComponent<Image>();
+        btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(onClick);
 
-        btnRect.gameObject.AddComponent<MenuButtonHover>();
+        if (btnRect.gameObject.GetComponent<MenuButtonHover>() == null)
+            btnRect.gameObject.AddComponent<MenuButtonHover>();
 
         CreateText(btnRect, "Label", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white).text = label;
     }
+
+#if UNITY_EDITOR
+    [ContextMenu("Crear o Actualizar Pantallas UI en Escena")]
+    public void BuildSceneUIInEditor()
+    {
+        LoadMenuSpritesIfNeeded();
+        BuildHUD();
+        UnityEditor.EditorUtility.SetDirty(gameObject);
+    }
+
+    [UnityEditor.MenuItem("Rescate Veterinario/Crear o Actualizar Pantallas UI en Escena")]
+    public static void CreateSceneUIMenuCommand()
+    {
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        if (gm == null)
+        {
+            GameObject go = new GameObject("GameManager_HUD");
+            gm = go.AddComponent<GameManager>();
+        }
+        gm.BuildSceneUIInEditor();
+        UnityEditor.Selection.activeGameObject = gm.gameObject;
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+    }
+
+    [UnityEditor.InitializeOnLoadMethod]
+    private static void AutoCreateSceneUIOnceInEditor()
+    {
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (FindFirstObjectByType<PlayerController>() == null) return;
+
+            GameManager gm = FindFirstObjectByType<GameManager>();
+            if (gm == null)
+            {
+                GameObject go = new GameObject("GameManager_HUD");
+                gm = go.AddComponent<GameManager>();
+            }
+            if (gm.transform.Find("HUD_Canvas") == null && GameObject.Find("HUD_Canvas") == null)
+            {
+                gm.BuildSceneUIInEditor();
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            }
+        };
+    }
+#endif
 }
 
 #if UNITY_EDITOR
