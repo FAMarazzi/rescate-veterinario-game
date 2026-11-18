@@ -219,6 +219,8 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
     public void OnPointerEnter(PointerEventData eventData)
     {
         _isHovered = true;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlayUIHover();
         UpdateState();
     }
 
@@ -233,6 +235,8 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
     {
         if (eventData.button != PointerEventData.InputButton.Left) return;
         _isPressed = true;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlayUIClick();
         UpdateState();
     }
 
