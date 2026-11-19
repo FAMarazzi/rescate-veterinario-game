@@ -139,9 +139,7 @@ public class CameraFollow : MonoBehaviour
         transform.LookAt(_target);
     }
 
-    /// <summary>
-    /// Centra la cámara instantáneamente sobre el jugador (se usa durante el fundido a negro del respawn para evitar un tirón brusco).
-    /// </summary>
+    // Centro la cámara de una sobre el jugador durante el fundido a negro del respawn para evitar un tirón brusco
     public void SnapToTarget()
     {
         if (_target == null) return;

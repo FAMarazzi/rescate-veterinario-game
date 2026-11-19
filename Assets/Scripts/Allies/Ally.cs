@@ -47,10 +47,7 @@ public class Ally : Entity
 
     public bool IsCorrupted => _isCorrupted;
 
-    /// <summary>
-    /// Aplica una escala uniforme al liberarse de la jaula solo si se configuró un valor mayor a 0
-    /// en la jaula o en este aliado; si ambos están en 0, conserva su escala real en el mundo.
-    /// </summary>
+    // Aplica una escala uniforme al liberarse solo si configuré un valor > 0 en la jaula o en el aliado; en 0 deja su escala real
     public void ApplyReleaseScale(float cageOverrideScale = 0f)
     {
         float targetScale = cageOverrideScale > 0f ? cageOverrideScale : _releaseScale;
@@ -58,10 +55,7 @@ public class Ally : Entity
             transform.localScale = Vector3.one * targetScale;
     }
 
-    /// <summary>
-    /// Centra el modelo 3D en X/Z dentro del aro verde y apoya sus patas al ras del piso (transform.position.y),
-    /// limpiando cualquier offset local que tuviera para entrar en la jaula.
-    /// </summary>
+    // Centro el modelo 3D en X/Z adentro del aro verde y apoyo las patas al ras del piso, limpiando cualquier offset de la jaula
     public void SnapModelToFloor()
     {
         Transform model = GetModelTransform();

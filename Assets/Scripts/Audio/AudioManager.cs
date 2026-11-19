@@ -155,10 +155,10 @@ public class AudioManager : MonoBehaviour
         if (_bgmClip == null)
             _bgmClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Resources/Audio/Rescate Veterinario master simple.wav");
 #endif
-        if (_bgmClip == null)
-            _bgmClip = CreateAmbientLoopClip("ClinicAmbientBGM", 8.0f);
     }
 
+    // Genero ondas sinusoidales simples en memoria con AudioClip.Create para los efectos básicos
+    // (así no dependo de archivos externos si un slot queda vacío en el Inspector)
     private AudioClip CreateToneClip(string clipName, float startFreq, float endFreq, float duration)
     {
         int sampleRate = 44100;
@@ -202,30 +202,7 @@ public class AudioManager : MonoBehaviour
         return clip;
     }
 
-    private AudioClip CreateAmbientLoopClip(string clipName, float duration)
-    {
-        int sampleRate = 44100;
-        int sampleCount = Mathf.CeilToInt(sampleRate * duration);
-        float[] samples = new float[sampleCount];
-
-        // Acorde menor atmosférico suave para la clínica
-        float[] chord = { 220f, 261.63f, 329.63f, 392f };
-        for (int i = 0; i < sampleCount; i++)
-        {
-            float time = (float)i / sampleRate;
-            float note = chord[Mathf.FloorToInt((time * 0.5f) % chord.Length)];
-            float lfo = 0.6f + 0.4f * Mathf.Sin(time * Mathf.PI * 0.5f);
-            float val = Mathf.Sin(2f * Mathf.PI * note * time) * 0.12f
-                      + Mathf.Sin(2f * Mathf.PI * 110f * time) * 0.10f;
-            samples[i] = val * lfo;
-        }
-
-        AudioClip clip = AudioClip.Create(clipName, sampleCount, 1, sampleRate, false);
-        clip.SetData(samples, 0);
-        return clip;
-    }
-
-    // Genera un toque de UI suave tipo marimba/madera con decaimiento exponencial rápido, afinado en La menor
+    // Toque corto de UI con decaimiento exponencial afinado en La menor para que no choque con mi música de fondo
     private AudioClip CreateSoftPluckClip(string clipName, float[] notes, float duration)
     {
         int sampleRate = 44100;

@@ -292,7 +292,7 @@ public abstract class Enemy : Entity
             agentSpeed = Mathf.Max(_agent.velocity.magnitude, _agent.desiredVelocity.magnitude);
         }
 
-        // También medimos el desplazamiento real por frame por si el agente o la física deslizan al gato
+        // También mido el desplazamiento real por frame por si el agente o la física deslizan al gato
         float realSpeed = Time.deltaTime > 0.0001f
             ? Vector3.Distance(transform.position, _lastFramePos) / Time.deltaTime
             : 0f;

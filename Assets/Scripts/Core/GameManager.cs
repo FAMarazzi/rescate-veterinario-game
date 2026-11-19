@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/13/2026, 5:03:34 PM
+ * @LastEditTime: 11/19/2026, 3:11:10 PM
  * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
  *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
  *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.
@@ -30,7 +30,8 @@ public class GameManager : MonoBehaviour
             (Instance._introStoryPanel != null && Instance._introStoryPanel.activeSelf) ||
             (Instance._pauseMenuPanel != null && Instance._pauseMenuPanel.activeSelf) ||
             (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf) ||
-            (Instance._gameOverScreenPanel != null && Instance._gameOverScreenPanel.activeSelf)
+            (Instance._gameOverScreenPanel != null && Instance._gameOverScreenPanel.activeSelf) ||
+            (Instance._victoryScreenPanel != null && Instance._victoryScreenPanel.activeSelf)
         );
 
     private static bool _hasShownTitleThisSession = false;
@@ -52,6 +53,11 @@ public class GameManager : MonoBehaviour
     [SerializeField] private Sprite _gameOverBackgroundSprite;
     [SerializeField] private Sprite _btnReintentarGameOverSprite;
     [SerializeField] private Sprite _btnMenuPrincipalGameOverSprite;
+
+    [Header("Sprites de Pantalla de Victoria (Assets/Victory)")]
+    [SerializeField] private Sprite _victoryBackgroundSprite;
+    [SerializeField] private Sprite _btnJugarDeNuevoVictorySprite;
+    [SerializeField] private Sprite _btnMenuPrincipalVictorySprite;
 
     [Header("Sprite Opcional de Historia / Intro")]
     [SerializeField] private Sprite _introBackgroundSprite;
@@ -78,6 +84,7 @@ public class GameManager : MonoBehaviour
     // Pantalla de Fin de Partida (Victoria / Derrota)
     private GameObject _endScreenPanel;
     private GameObject _gameOverScreenPanel;
+    private GameObject _victoryScreenPanel;
     private Text _endTitleText;
     private Text _endSubtitleText;
     private Image _endPanelBg;
@@ -231,6 +238,13 @@ public class GameManager : MonoBehaviour
             _btnReintentarGameOverSprite = LoadSpriteFromAssetFolder("GameOver", "Botón Reintentar con Huellas.png");
         if (_btnMenuPrincipalGameOverSprite == null)
             _btnMenuPrincipalGameOverSprite = LoadSpriteFromAssetFolder("GameOver", "Botón de Menú Principal Neón.png");
+
+        if (_victoryBackgroundSprite == null)
+            _victoryBackgroundSprite = LoadSpriteFromAssetFolder("Victory", "¡Clínica Salvada! Nuevos Desafíos.png");
+        if (_btnJugarDeNuevoVictorySprite == null)
+            _btnJugarDeNuevoVictorySprite = LoadSpriteFromAssetFolder("Victory", "Botón de juego “Jugar de nuevo”.png");
+        if (_btnMenuPrincipalVictorySprite == null)
+            _btnMenuPrincipalVictorySprite = LoadSpriteFromAssetFolder("Victory", "Botón dorado de menú principal.png");
     }
 
     private Sprite LoadSpriteFromAssetFolder(string folderName, string fileName)
@@ -238,7 +252,7 @@ public class GameManager : MonoBehaviour
         string assetPath = "Assets/" + folderName + "/" + fileName;
 
 #if UNITY_EDITOR
-        // Primero verificamos si podemos cargarlo como Sprite desde AssetDatabase
+        // Primero me fijo si lo puedo cargar directo como Sprite desde AssetDatabase
         Sprite sp = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
         if (sp != null && sp.texture != null && sp.texture.isReadable)
             return sp;
@@ -335,9 +349,7 @@ public class GameManager : MonoBehaviour
         Cage.OnCageOpened -= HandleCageOpened;
     }
 
-    // =========================================================
-    // CALLBACKS DE EVENTOS (PATRÓN OBSERVER)
-    // =========================================================
+    // Callbacks de eventos (Patrón Observer)
     private void HandlePlayerHealthChanged(float current, float max)
     {
         if (_playerHealthFill != null && max > 0f)
@@ -512,9 +524,19 @@ public class GameManager : MonoBehaviour
 
     private void ShowEndScreen(bool victory, string title, string subtitle)
     {
+        if (victory && _victoryScreenPanel != null)
+        {
+            if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
+            if (_gameOverScreenPanel != null) _gameOverScreenPanel.SetActive(false);
+            _victoryScreenPanel.SetActive(true);
+            Time.timeScale = 0f;
+            return;
+        }
+
         if (!victory && _gameOverScreenPanel != null)
         {
             if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
+            if (_victoryScreenPanel != null) _victoryScreenPanel.SetActive(false);
             _gameOverScreenPanel.SetActive(true);
             Time.timeScale = 0f;
             return;
@@ -529,19 +551,18 @@ public class GameManager : MonoBehaviour
         _endPanelBg.color = victory ? new Color(0.06f, 0.16f, 0.12f, 0.94f) : new Color(0.18f, 0.06f, 0.08f, 0.94f);
     }
 
-    // =========================================================
-    // MENÚ DE INICIO ILUSTRADO Y MENÚ DE PAUSA INDEPENDIENTE
-    // =========================================================
+    // Menú de inicio ilustrado y menú de pausa independiente
     public void OpenTitleMenu()
     {
         if (_titleMenuPanel == null) return;
         if (_endScreenPanel != null) _endScreenPanel.SetActive(false);
         if (_gameOverScreenPanel != null) _gameOverScreenPanel.SetActive(false);
+        if (_victoryScreenPanel != null) _victoryScreenPanel.SetActive(false);
         if (_pauseMenuPanel != null) _pauseMenuPanel.SetActive(false);
         if (_introStoryPanel != null) _introStoryPanel.SetActive(false);
 
         _titleMenuPanel.SetActive(true);
-        // Arrancamos con los subpaneles cerrados para que luzca limpio el fondo de recepción magenta
+        // Arranco con los subpaneles cerrados para que se vea limpio el fondo de recepción magenta
         if (_optionsSubPanel != null) _optionsSubPanel.SetActive(false);
         if (_creditsSubPanel != null) _creditsSubPanel.SetActive(false);
         Time.timeScale = 0f;
@@ -753,9 +774,7 @@ public class GameManager : MonoBehaviour
 #endif
     }
 
-    // =========================================================
-    // CONSTRUCCIÓN DEL HUD, MENÚ DE INICIO Y MENÚ DE PAUSA
-    // =========================================================
+    // Construcción del HUD, menú de inicio y menú de pausa
     private void BuildHUD()
     {
         if (FindFirstObjectByType<EventSystem>() == null)
@@ -894,6 +913,9 @@ public class GameManager : MonoBehaviour
         // 5. PANTALLA DE GAME OVER ILUSTRADA (Assets/GameOver)
         BuildGameOverScreen(canvasObj.transform, defaultFont);
 
+        // 5b. PANTALLA DE VICTORIA ILUSTRADA (Assets/Victory)
+        BuildVictoryScreen(canvasObj.transform, defaultFont);
+
         // 6. MENÚ DE PAUSA INDEPENDIENTE (ESC)
         BuildPauseMenu(canvasObj.transform, defaultFont);
 
@@ -956,6 +978,56 @@ public class GameManager : MonoBehaviour
         );
 
         _gameOverScreenPanel.SetActive(false);
+    }
+
+    private void BuildVictoryScreen(Transform canvasTransform, Font font)
+    {
+        RectTransform vicRect = CreatePanel(canvasTransform, "Panel_PantallaVictoria",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, Color.white);
+        _victoryScreenPanel = vicRect.gameObject;
+
+        Image bgImg = vicRect.GetComponent<Image>();
+        if (_victoryBackgroundSprite != null)
+        {
+            bgImg.sprite = _victoryBackgroundSprite;
+            bgImg.color = Color.white;
+            bgImg.preserveAspect = false;
+        }
+        else
+        {
+            bgImg.color = new Color(0.06f, 0.16f, 0.12f, 0.98f);
+        }
+
+        // Botón izquierdo "Jugar de nuevo" (crema/beige -> Hover turquesa brillante, Click turquesa oscuro, igual que el Menú Principal)
+        CreateSpriteMenuButton(
+            vicRect,
+            "Btn_Victoria_JugarDeNuevo",
+            _btnJugarDeNuevoVictorySprite,
+            font,
+            "↻  Jugar de nuevo",
+            new Vector2(-248f, -416f),
+            new Vector2(498f, 166f),
+            RestartLevel,
+            new Color(0.38f, 1.00f, 0.88f),
+            new Color(0.18f, 0.83f, 0.71f)
+        );
+
+        // Botón derecho "Menú Principal" (dorado -> Hover dorado brillante, Click naranja ámbar intenso)
+        CreateSpriteMenuButton(
+            vicRect,
+            "Btn_Victoria_MenuPrincipal",
+            _btnMenuPrincipalVictorySprite,
+            font,
+            "⌂  Menú Principal",
+            new Vector2(240f, -416f),
+            new Vector2(460f, 154f),
+            ReturnToMainMenu,
+            new Color(1.00f, 0.88f, 0.25f),
+            new Color(0.92f, 0.52f, 0.08f)
+        );
+
+        _victoryScreenPanel.SetActive(false);
     }
 
     private void BuildTitleMenu(Transform canvasTransform, Font font)
@@ -1238,7 +1310,7 @@ public class GameManager : MonoBehaviour
 
         Button btn = btnObj.GetComponent<Button>();
         if (btn == null) btn = btnObj.AddComponent<Button>();
-        // Desactivamos la transición por defecto de Unity para que MenuButtonHover controle el cambio de color y el escalado 110% / 105%
+        // Apago la transición por defecto de Unity para que MenuButtonHover maneje el cambio de color y el escalado 110% / 105%
         btn.transition = Selectable.Transition.None;
         btn.targetGraphic = img;
         btn.onClick.RemoveAllListeners();
@@ -1412,28 +1484,6 @@ public class GameManager : MonoBehaviour
         UnityEditor.Selection.activeGameObject = gm.gameObject;
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
     }
-
-    [UnityEditor.InitializeOnLoadMethod]
-    private static void AutoCreateSceneUIOnceInEditor()
-    {
-        UnityEditor.EditorApplication.delayCall += () =>
-        {
-            if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (FindFirstObjectByType<PlayerController>() == null) return;
-
-            GameManager gm = FindFirstObjectByType<GameManager>();
-            if (gm == null)
-            {
-                GameObject go = new GameObject("GameManager_HUD");
-                gm = go.AddComponent<GameManager>();
-            }
-            if (gm.transform.Find("HUD_Canvas") == null && GameObject.Find("HUD_Canvas") == null)
-            {
-                gm.BuildSceneUIInEditor();
-                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
-            }
-        };
-    }
 #endif
 }
 
@@ -1457,6 +1507,7 @@ public class MenuBuildAssetsPostprocessor : UnityEditor.Build.IPostprocessBuildW
         CopyPngFolder("MainMenu", dataDir);
         CopyPngFolder("Creditos", dataDir);
         CopyPngFolder("GameOver", dataDir);
+        CopyPngFolder("Victory", dataDir);
     }
 
     private static void CopyPngFolder(string folderName, string dataDir)

@@ -80,9 +80,7 @@ public class MedicineCabinet : MonoBehaviour, IInteractable
         return _myCollider != null ? _myCollider.bounds.center : transform.position;
     }
 
-    /// <summary>
-    /// Verifica que la veterinaria esté a distancia, del lado de ADELANTE del armario y sin ninguna pared en el medio.
-    /// </summary>
+    // Chequeo que la veterinaria esté a distancia, adelante del armario y sin ninguna pared en el medio
     public bool CanInteractWith(Vector3 playerPos)
     {
         if (_medkitsInside <= 0) return false;

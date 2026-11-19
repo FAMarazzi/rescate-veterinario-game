@@ -97,6 +97,9 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
         }
     }
 
+    // Como los PNGs de mis botones traen el fondo claro y el texto/ícono negro en la misma imagen, si uso el Color Tint
+    // común de Unity me oscurece todo parejo. Por eso recorro los píxeles una sola vez (y lo guardo en cache):
+    // dejo intactos los píxeles oscuros del texto (< 45) y tiño solo los claros usando la fórmula estándar de luminancia RGB.
     private static Sprite CreateTintedButtonSprite(Sprite baseSprite, Color targetBaseColor, string suffix)
     {
         Texture2D src = baseSprite.texture;
@@ -106,7 +109,7 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
         Color32[] pixels = src.GetPixels32();
         Color32[] outPixels = new Color32[pixels.Length];
 
-        // Calculamos la luminancia promedio de los píxeles claros del botón para conservar el relieve 3D exacto
+        // Saco la luminancia promedio del papel claro del botón para mantener el relieve original
         double sumLum = 0;
         int countLum = 0;
         for (int i = 0; i < pixels.Length; i += 4)
@@ -139,7 +142,7 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
             }
 
             // Si el botón tiene un detalle naranja saturado (como la huella izquierda y el borde de "Reintentar"),
-            // lo intensificamos en naranja rojizo cálido para que resalte nítido sobre el fondo dorado del hover/click
+            // lo paso a un naranja más intenso para que resalte bien sobre el fondo dorado del hover/click
             if (c.r > 190 && c.g < 145 && c.b < 45 && (c.r - c.g) > 65)
             {
                 byte orR = (byte)Mathf.Clamp(c.r * 0.92f, 0f, 255f);
@@ -159,7 +162,7 @@ public class MenuButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExit
             float targetG = Mathf.Clamp(targetBaseColor.g * 255f * shadeFactor, 0f, 255f);
             float targetB = Mathf.Clamp(targetBaseColor.b * 255f * shadeFactor, 0f, 255f);
 
-            // En zonas de brillo alto (cintas adhesivas y bisel superior) sumamos un leve toque de luz blanca
+            // En las zonas de brillo alto (cintas y bisel superior) le sumo un poquito de luz blanca
             if (shadeFactor > 1.02f)
             {
                 float highlight = (shadeFactor - 1.02f) * 85f;

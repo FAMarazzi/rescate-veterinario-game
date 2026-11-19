@@ -46,7 +46,7 @@ public class ClinicLightEffects : MonoBehaviour
         if (_light != null)
         {
             // Todas las luces de pasillos y consultorios proyectan sombra cuando el jugador está cerca
-            // (solo excluimos luces secundarias decorativas muy chicas de alcance < 9.5m para no saturar el atlas)
+            // (solo excluyo luces secundarias decorativas chicas de alcance < 9.5m para no saturar el atlas)
             _canCastRoomShadows = !gameObject.name.Contains("Secundaria") && _light.range >= 9.5f;
             if (_canCastRoomShadows)
             {
@@ -81,7 +81,7 @@ public class ClinicLightEffects : MonoBehaviour
 
     private static void EnsureCharactersAndFloorsHaveShadows()
     {
-        // Aseguramos que la veterinaria, los gatos corruptos y los aliados proyecten sombra siempre
+        // Me aseguro de que la veterinaria, los gatos corruptos y los aliados proyecten sombra siempre
         Entity[] entities = FindObjectsByType<Entity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < entities.Length; i++)
         {
@@ -94,7 +94,7 @@ public class ClinicLightEffects : MonoBehaviour
             }
         }
 
-        // Aseguramos que todas las baldosas del piso reciban sombras
+        // Me aseguro de que todas las baldosas del piso reciban sombras
         GameObject floorRoot = GameObject.Find("Clinica_Piso");
         if (floorRoot != null)
         {
