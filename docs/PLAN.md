@@ -1,82 +1,52 @@
-# Rescate Veterinario – Plan de 20 días
+# Rescate Veterinario – Plan y Bitácora de Avance
 
-Entrega: **18/11/2026 23:59**. Arranqué el 26/10. Voy de menos a más: commit todos los días y cada sistema tiene que andar antes de pasar al siguiente.
+Entrega: **18/11/2026 23:59**. Voy de menos a más: commit seguido y cada sistema tiene que andar antes de pasar al siguiente.
 
-> Las fechas del cronograma son una estimación mía. Si algo se atrasa o se adelanta, actualizo la tabla y lo anoto en el registro de avance de abajo.
+> Las fechas y notas de abajo son mi registro personal de avance a medida que fui cerrando cada parte del juego.
 
 ## Checklist de la consigna (todo esto tiene que estar al final)
-- [x] Top view 45°, jugador se mueve libre (día 1)
-- [x] Melee + Ranged (dardos con pool) (día 1)
+- [x] Top view 45°, jugador se mueve libre
+- [x] Melee + Ranged (dardos con pool)
 - [x] Recibir / ocasionar daño, eliminar enemigos (`CorruptCat` con dardos/melee, se duerme con `Zzz`)
 - [x] Recolectar y usar ítems (sacar botiquines con `E` de los armarios `MedicineCabinet` y usarlos con `Q`)
 - [x] Interactuar con el escenario (`IInteractable`: jaulas `Cage` y armarios médicos `MedicineCabinet`)
-- [x] Feedback / notificaciones en pantalla y barras de vida (`WorldHealthBar` y HUD reactivo en `GameManager`)
-- [x] Ganar, perder, respawn / reiniciar (3 vidas + animación de caída + respawn con onda expansiva y escudo temporal + pantallas de Victoria y Game Over ilustrada)
+- [x] Feedback / notificaciones en pantalla y barras de vida (`WorldHealthBar` y avisos en `GameManager`)
+- [x] Ganar, perder, respawn / reiniciar (sistema de 3 vidas + animación de muerte + respawn con escudo en `PlayerController` + pantallas de Victoria y Game Over)
 - [x] Enemigos: detectar → acercarse → atacar → recibir daño → morir (con dificultad progresiva por sala y línea de visión)
-- [x] Escena de título: Play (con Informe de Emergencia de 3 diapositivas), Créditos ilustrados, Opciones (volumen), Exit
-- [x] Música de fondo original en La menor (con ducking en partida) + efectos + feedback sonoro de UI en La menor, volumen en Opciones
-- [x] 3+ minutos de gameplay efectivo (7 sectores de la clínica + 19 corruptos + 6 jaulas + Dibu y Cuti + Jefe del Quirófano)
-- [x] Game Concept y Manual de Controles y Desafío (2 carillas en `docs/Entrega_Final_Rescate_Veterinario.pdf` y `.md`)
-- [x] Build de Windows Standalone lista + PDF con controles y desafío
+- [x] Escena de título: Play (con intro de 3 diapositivas), Créditos, Opciones (volumen), Exit
+- [x] Música de fondo + efectos + feedback sonoro, volumen en Opciones
+- [x] 3+ minutos de gameplay efectivo
+- [x] Game Concept (2 carillas), backlog / Issues en GitHub, commits seguidos
+- [x] Build de Windows + PDF con controles y desafío
 
 ## Arquitectura (herencia + polimorfismo, manteniendo KISS)
 - `IDamageable` → `Entity` (abstract) → `PlayerController`, `Enemy` (abstract), `Ally`
 - `Enemy` → `CorruptCat` (sirve tanto para los gatos corruptos comunes como para el Gato Jefe gigante ajustando vida/daño/escala en el Inspector, sin duplicar scripts)
-- `Ally` → `Dibu`, `Cuti` (salen de las jaulas, tienen aro verde, siguen al jugador y atacan a los corruptos)
-- `IInteractable` → `Cage` (jaulas de gatitos) y armario de botiquines (decora la clínica y permite sacar/recolectar botiquines para usar)
-- Barras de vida y `GameManager` (control de victoria, derrota, respawn y notificaciones en pantalla)
-- Pool: `BulletPool` (ya está)
+- `Ally` → `Dibu`, `Cuti` (salen de las jaulas, tienen aro verde, siguen al jugador y atacan a los corruptos; nunca mueren: si les bajan la vida se vuelven corruptos un rato hasta que los sedo con dardos)
+- `IInteractable` → `Cage` (jaulas de gatitos) y `MedicineCabinet` (armario de botiquines: decora la clínica y permite sacar/recolectar botiquines para usar con `Q`)
+- Barras de vida (`WorldHealthBar`) y `GameManager` (control de victoria, derrota, respawn, menús y notificaciones en pantalla)
+- Pools: `BulletPool`, `EnemyPool` y `KittenPool`
 
-## Cronograma
-| Día | Fecha | Programación | Unity / Arte / Audio |
-|---|---|---|---|
-| 1 | 26/10 | Repo + Entity + Player + cámara (HECHO) | Escena de prueba, pool de dardos, probar movimiento |
-| 2 | 27/10 | Pulir Player (feel), barra de vida | Importar modelos de Meshy, prefabs Dibu / Cuti / gatos |
-| 3 | 28/10 | `Enemy` abstract + máquina de estados | NavMesh, escena gris con salas |
-| 4 | 29/10 | `CorruptCat` (melee) | Prefab enemigo, animación por código |
-| 5 | 30/10 | `CorruptDog` (ranged, usa pool) | Prefab perro corrupto, material violeta |
-| 6 | 31/10 | Melee con empuje contra enemigos | Probar balance |
-| 7 | 1/11 | `Ally` + Dibu y Cuti siguen y atacan | Prefabs aliados |
-| 8 | 2/11 | `IInteractable`, `Cage`, rescate de gatitos | Prefab jaula con modelo Meshy |
-| 9 | 3/11 | `Door`, llaves o condición de apertura | Prefab puerta, armado del nivel 1 |
-| 10 | 4/11 | `Pickup`: botiquín y antídoto | Modelos / íconos de ítems |
-| 11 | 5/11 | `CorruptBoss` + cura con antídoto | Sala del jefe |
-| 12 | 6/11 | `GameManager`, victoria / derrota / respawn | Armado final de niveles |
-| 13 | 7/11 | UI: HUD, vida, gatitos, mensajes | Canvas y fuentes |
-| 14 | 8/11 | Menú de título, Créditos, Opciones | Escena de título |
-| 15 | 9/11 | `AudioManager` + volumen con slider | Música y efectos (freesound, etc.) |
-| 16 | 10/11 | Partículas, feedback, screen shake | Efectos visuales |
-| 17 | 11/11 | Nivel 2 o más contenido | Más salas |
-| 18 | 12-13/11 | Bugs y balance, 3 minutos de juego | Pruebas |
-| 19 | 14-15/11 | Build + WebGL + itch.io | Capturas |
-| 20 | 16-17/11 | PDF, Game Concept, repo final | Margen |
-| – | 18/11 | Entrega | – |
+## Qué conseguí / armé fuera de código
+- **Música de fondo:** tema propio en La menor (`Rescate Veterinario master simple.wav`), puesto en loop desde el menú y bajando un poquito el volumen al entrar a jugar.
+- **Efectos:** disparo de dardo, empujón melee, abrir jaula, curarse con botiquín, gato curado y soniditos de hover/click en los botones afinados en La menor.
+- **Modelos y animaciones:** modelos 3D generados con Meshy AI (veterinaria, Dibu, Cuti, gatos, jaulas, camillas, carritos, armarios, piso y paredes) y animaciones de Mixamo / Meshy para la veterinaria (correr, apuntar, morir) y los michis.
+- **Créditos:** mi nombre, mención a mis michis reales (Dibu y Cuti) y las herramientas que usé.
 
-## Qué conseguir fuera de código
-- **Música de fondo:** Pixabay, Freesound o Incompetech (revisar licencia, anotarla en créditos).
-- **Efectos:** golpe, dardo, maullido, ladrido, puerta, jaula, pickup, victoria, derrota.
-- **Fuente:** Google Fonts (por ejemplo una redondeada que combine con los gatos).
-- **Animación:** por código (rebote, escala, rotación). Mixamo solo para el veterinario si es humanoide.
-- **Créditos:** mi nombre, las herramientas de IA que usé (Meshy) y las fuentes del audio.
-
-## Si me atraso
-Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no recorto es el menú, el audio ni la entrega.
-
-## Hitos del profe vs. este plan
-| Hito | Qué pide | Dónde cae en mi plan | Estado |
-|---|---|---|---|
-| 0 – Preproducción | Nombre, Game Concept, repo, backlog | Día 1 y 20 (Game Concept), Issues en GitHub | En curso |
-| 1 – Core Gameplay | Movimiento, cámara, enemigo, daño, combate básico | Días 1 a 6 | **HECHO** |
-| 2 – Vertical Slice | Melee, ranged, enemigos, items, objetivo, ganar o perder | Días 7 a 12 | **En curso (prioridad actual)** |
-| 3 – Producción | Niveles, variantes, UI, audio | Días 13 a 17 | Pendiente |
-| 4 – Feature Complete | Sistemas listos, bugs y balance | Día 18 | Pendiente |
-| 5 – Release | Build, docs, créditos, flujo completo | Días 19 y 20 | Pendiente |
+## Hitos del profe vs. mi avance
+| Hito | Qué pide | Estado |
+|---|---|---|
+| 0 – Preproducción | Nombre, Game Concept, repo, backlog | **HECHO** |
+| 1 – Core Gameplay | Movimiento, cámara, enemigo, daño, combate básico | **HECHO** |
+| 2 – Vertical Slice | Melee, ranged, enemigos, items, objetivo, ganar o perder | **HECHO** |
+| 3 – Producción | Niveles, variantes, UI, audio | **HECHO** |
+| 4 – Feature Complete | Sistemas listos, bugs y balance | **HECHO** |
+| 5 – Release | Build, docs, créditos, flujo completo | **HECHO** |
 
 ## Registro de avance
-- **26/10 (día 1):** repo creado, `Entity` e `IDamageable`, jugador con movimiento, melee y dardos, pool de balas, cámara top view, escena de prueba.
-- **27 y 28/10 (días 2 y 3):** no avancé. Los dos días de atraso los estoy recuperando entre hoy y mañana.
-- **29/10 (día 4):** importé los modelos de Meshy a `Assets/Models` (veterinaria con animaciones, arma, dardo, jaula, piso, pared y pared con puerta). Borré los `.zip` y la jaula duplicada. Armé el prefab del jugador con el modelo como hijo (`Model`) y su Animator. Cambié el control del jugador (detalle abajo) y dejé todas las animaciones andando. Falta caminar hacia atrás y de costado: queda para el final y es poco probable que llegue a la entrega.
-- **30/10 (día 5):**
+- **Arranque (Base y Core Gameplay):** repo creado, `Entity` e `IDamageable`, jugador con movimiento, melee y dardos, pool de balas (`BulletPool`), cámara top view a 45° (`CameraFollow`) traída y adaptada del proyecto anterior.
+- **29/10:** importé los modelos de Meshy a `Assets/Models` (veterinaria con animaciones, arma, dardo, jaula, piso, pared y pared con puerta). Borré los `.zip` y la jaula duplicada. Armé el prefab del jugador con el modelo como hijo (`Model`) y su Animator. Cambié el control del jugador y dejé las animaciones andando.
+- **30/10:**
   - Calibré el dardo: salida desde el `_shootPoint` hacia el punto apuntado y ajuste de ángulo `_aimYawOffset` para que coincida con la animación.
   - Armé herramienta de editor `RoomBuilderWindow.cs` para generar el piso modular 20x20 con rotación aleatoria de baldosas, paredes perimetrales y plano realista de clínica veterinaria (Recepción, Farmacia, Pasillo Central, Consultorios 1 y 2, Sala de Jaulas y Quirófano).
   - Creé materiales (`Mat_Piso`, `Mat_Pared`, `Mat_ParedPuerta`), ajusté la escala de las paredes y puertas, y horneé el `NavMeshSurface` sobre `Clinica_Piso` usando `Physics Colliders`.
@@ -89,17 +59,14 @@ Si un día se me atrasa, recorto contenido (por ejemplo el nivel 2). Lo que no r
   - Agregué tinte violeta automático de corrupción en `Enemy.cs` y lógica al curarse (`Die()`): recupera su color natural, se duerme con efecto `"Zzz"` flotante y respiración, o se vuelve aliado (`Ally.cs`) con aro verde en el piso, caminata relajada al seguir y modo combate contra corruptos.
   - Armé `GatoCorrupto.prefab` con `CatAnimator.controller` y ajusté colisiones/constraints en `Y` para que no eleve al jugador ni falle el respawn.
   - Creé `IInteractable.cs`, `Cage.cs` y la detección con tecla `E` en `PlayerController.cs`.
-
-## Próximos pasos / TODOs (paso a paso, sin hacer todo de golpe)
-1. **Modelos 3D nuevos y Prefabs:**
-   - Terminar de generar e importar: **armario de botiquines**, objetos decorativos de la clínica y modelo del **Gato Corrupto Gigante (Jefe)** (que reutilizará `CorruptCat.cs` con más vida y daño para mantener el código simple - KISS).
-   - Armar los prefabs de **`Dibu`**, **`Cuti`** y la **`Jaula`** (`Cage.cs`) para liberar aliados con la tecla `E`.
-2. **Armario de Botiquines + Ítem Curativo (Recolectar y Utilizar items):**
-   - El armario de botiquines va a cumplir doble función: decorar las salas (Farmacia / Consultorios) y permitir sacar/recolectar botiquines para usarlos cuando nos falte vida.
-3. **Generador Automático de Decoración y Jaulas (`RoomBuilderWindow.cs`):**
-   - Agregar la **Pestaña 4 ("4. Decoración y Jaulas")** en `Tools -> Generador de Nivel` para ubicar automáticamente los muebles, armarios de botiquines y jaulas en cada sala, y re-hornear el NavMesh.
-4. **Barras de Vida + `GameManager` (Ganar, Perder, Notificaciones):**
-   - Agregar barras de vida visuales y el `GameManager` para controlar el objetivo del nivel, las notificaciones en pantalla y el flujo de Victoria / Derrota / Reiniciar.
-5. **Escena de Título y Audio (`AudioManager.cs`):**
-   - Menú inicial (Play, Créditos, Opciones con slider de volumen, Exit) y sonidos/música.
-
+- **11/11:**
+  - Importé los muebles decorativos (camillas, carritos, mostrador, sillas, mesa quirúrgica y armarios médicos) y agregué `MedicineCabinet.cs` para sacar botiquines con `E` y curarse con `Q`.
+  - Armé `WorldHealthBar.cs` (barras de vida flotantes con patrón Observer), `GameManager.cs` (HUD, objetivos, notificaciones, pausa, victoria y derrota) y `AudioManager.cs` con slider de volumen guardado en `PlayerPrefs`.
+  - Sumé `EnemyPool.cs` y `KittenPool.cs` para que los enemigos y los gatitos rescatados que corren a la puerta también usen Object Pooling, y `ClinicLightEffects.cs` para el parpadeo de los tubos fluorescentes rotos.
+- **12/11 y 13/11:**
+  - Armé las pantallas ilustradas del **Menú de Inicio** (`Assets/MainMenu`) y **Créditos** (`Assets/Creditos`) con el efecto de hover turquesa al 110% en `MenuButtonHover.cs`, y la intro de 3 diapositivas (*"Informe de Emergencia"*) al darle a Jugar.
+  - Ajusté las animaciones de los gatos, el piso exterior nocturno en `CameraFollow.cs` y las jaulas de **Dibu** (en Internación) y **Cuti** (en Consultorio 2).
+- **16/11 al 18/11:**
+  - Ajusté el centrado y orientación de Cuti al salir de la jaula con su FBX animado nuevo (`CutiAnimator.controller`) y puse material sin fricción para que ni el jugador ni los gatos se traben en los marcos de las puertas.
+  - Sumé la animación de muerte de la veterinaria (`Dead`) con transición de respawn, onda expansiva turquesa y 2,5 s de escudo invulnerable titilando, y validé que los botiquines solo se puedan sacar desde el frente del armario y nunca a través de una pared.
+  - Armé la pantalla ilustrada de **Game Over** (`Assets/GameOver`), integré mi tema de música original en La menor con bajada suave de volumen al entrar a partida, probé la Build de Windows y cerré los PDFs de *Game Concept* y *Documentación de Release*.
