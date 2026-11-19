@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:10:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/18/2026, 5:58:37 PM
+ * @LastEditTime: 11/19/2026, 8:34:47 AM
  * @Description: Gestor de audio general (Singleton): música de fondo, efectos de sonido (disparo, curación,
  *   jaula abierta, golpe) y control de volumen maestro persistente con PlayerPrefs.
  *   Si no se asignan AudioClips externos en el Inspector, sintetiza los clips proceduralmente para que nunca falle.

@@ -10,14 +10,14 @@ Entrega: **18/11/2026 23:59**. Arranqué el 26/10. Voy de menos a más: commit t
 - [x] Recibir / ocasionar daño, eliminar enemigos (`CorruptCat` con dardos/melee, se duerme con `Zzz`)
 - [x] Recolectar y usar ítems (sacar botiquines con `E` de los armarios `MedicineCabinet` y usarlos con `Q`)
 - [x] Interactuar con el escenario (`IInteractable`: jaulas `Cage` y armarios médicos `MedicineCabinet`)
-- [ ] Feedback / notificaciones en pantalla y barras de vida
-- [ ] Ganar, perder, respawn / reiniciar (sistema de 3 vidas + respawn en `PlayerController` listo; falta `GameManager` con pantalla de Victoria / Derrota y Reiniciar)
+- [x] Feedback / notificaciones en pantalla y barras de vida (`WorldHealthBar` y HUD reactivo en `GameManager`)
+- [x] Ganar, perder, respawn / reiniciar (3 vidas + animación de caída + respawn con onda expansiva y escudo temporal + pantallas de Victoria y Game Over ilustrada)
 - [x] Enemigos: detectar → acercarse → atacar → recibir daño → morir (con dificultad progresiva por sala y línea de visión)
-- [ ] Escena de título: Play, Créditos, Opciones (volumen), Exit
-- [ ] Música de fondo + efectos + feedback sonoro, volumen en Opciones
-- [ ] 3+ minutos de gameplay efectivo
-- [ ] Game Concept (2 carillas), backlog / Issues en GitHub, commits seguidos
-- [ ] Build (Windows y, si da el tiempo, WebGL en itch.io) + PDF con controles y desafío
+- [x] Escena de título: Play (con Informe de Emergencia de 3 diapositivas), Créditos ilustrados, Opciones (volumen), Exit
+- [x] Música de fondo original en La menor (con ducking en partida) + efectos + feedback sonoro de UI en La menor, volumen en Opciones
+- [x] 3+ minutos de gameplay efectivo (7 sectores de la clínica + 19 corruptos + 6 jaulas + Dibu y Cuti + Jefe del Quirófano)
+- [x] Game Concept y Manual de Controles y Desafío (2 carillas en `docs/Entrega_Final_Rescate_Veterinario.pdf` y `.md`)
+- [x] Build de Windows Standalone lista + PDF con controles y desafío
 
 ## Arquitectura (herencia + polimorfismo, manteniendo KISS)
 - `IDamageable` → `Entity` (abstract) → `PlayerController`, `Enemy` (abstract), `Ally`
