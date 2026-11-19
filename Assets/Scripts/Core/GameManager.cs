@@ -27,6 +27,7 @@ public class GameManager : MonoBehaviour
     public static bool IsMenuOpen =>
         Instance != null && (
             (Instance._titleMenuPanel != null && Instance._titleMenuPanel.activeSelf) ||
+            (Instance._optionsSubPanel != null && Instance._optionsSubPanel.activeSelf) ||
             (Instance._introStoryPanel != null && Instance._introStoryPanel.activeSelf) ||
             (Instance._pauseMenuPanel != null && Instance._pauseMenuPanel.activeSelf) ||
             (Instance._endScreenPanel != null && Instance._endScreenPanel.activeSelf) ||
@@ -195,14 +196,18 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Tecla ESC: si estamos en el Menú de Inicio no hace nada; si estamos jugando abre/cierra el Menú de Pausa
+        // Tecla ESC: cierra Opciones/Créditos si están abiertos; si estoy jugando abre o cierra la Pausa
         if (Keyboard.current.escapeKey.wasPressedThisFrame && !_gameEnded)
         {
+            if (_optionsSubPanel != null && _optionsSubPanel.activeSelf)
+            {
+                _optionsSubPanel.SetActive(false);
+                return;
+            }
+
             if (_titleMenuPanel != null && _titleMenuPanel.activeSelf)
             {
-                if (_optionsSubPanel != null && _optionsSubPanel.activeSelf)
-                    _optionsSubPanel.SetActive(false);
-                else if (_creditsSubPanel != null && _creditsSubPanel.activeSelf)
+                if (_creditsSubPanel != null && _creditsSubPanel.activeSelf)
                     _creditsSubPanel.SetActive(false);
                 return;
             }
@@ -705,6 +710,8 @@ public class GameManager : MonoBehaviour
 
         if (_titleMenuPanel != null)
             _titleMenuPanel.SetActive(false);
+        if (_optionsSubPanel != null)
+            _optionsSubPanel.SetActive(false);
         if (_introStoryPanel != null)
             _introStoryPanel.SetActive(false);
         if (_pauseMenuPanel != null)
@@ -723,6 +730,8 @@ public class GameManager : MonoBehaviour
 
     public void ResumeFromPause()
     {
+        if (_optionsSubPanel != null)
+            _optionsSubPanel.SetActive(false);
         if (_pauseMenuPanel != null)
             _pauseMenuPanel.SetActive(false);
         Time.timeScale = 1f;
@@ -979,6 +988,9 @@ public class GameManager : MonoBehaviour
 
         // 8. PANTALLA DE MENÚ DE INICIO ILUSTRADA (Fondo Recepción Magenta + Logo + 4 Botones con Hover 110% Turquesa)
         BuildTitleMenu(canvasObj.transform, defaultFont);
+
+        // 9. PANTALLA COMPLETA DE OPCIONES (como hija directa del Canvas para poder abrirla tanto desde Inicio como desde Pausa)
+        BuildOptionsScreen(canvasObj.transform, defaultFont);
     }
 
     private void BuildGameOverScreen(Transform canvasTransform, Font font)
@@ -1145,12 +1157,42 @@ public class GameManager : MonoBehaviour
         CreateSpriteMenuButton(bgRect, "Btn_Salir", _btnSalirSprite, font, "✖  Salir",
             new Vector2(columnX, -374f), btnSize, QuitGame);
 
-        // Si quedó un SubPanel_Opciones viejo guardado en la escena, lo apago para que no se pise con la pantalla nueva
+        // Si quedó un SubPanel_Opciones o Panel_PantallaOpciones viejo adentro del título, lo apago
         Transform oldOpt = bgRect.Find("SubPanel_Opciones");
         if (oldOpt != null) oldOpt.gameObject.SetActive(false);
+        Transform oldFullOpt = bgRect.Find("Panel_PantallaOpciones");
+        if (oldFullOpt != null) oldFullOpt.gameObject.SetActive(false);
 
+        // PANTALLA COMPLETA DE CRÉDITOS ILUSTRADA (Fondo Pizarra de Corcho con Dibu y Cuti + Botón "<- Volver" abajo a la izquierda)
+        RectTransform credRect = CreatePanel(bgRect, "Panel_PantallaCreditos",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, Color.white);
+        _creditsSubPanel = credRect.gameObject;
+
+        Image credBgImg = credRect.GetComponent<Image>();
+        if (_creditsBackgroundSprite != null)
+        {
+            credBgImg.sprite = _creditsBackgroundSprite;
+            credBgImg.color = Color.white;
+            credBgImg.preserveAspect = false;
+        }
+        else
+        {
+            credBgImg.color = new Color(0.08f, 0.05f, 0.14f, 0.98f);
+        }
+
+        // Botón "<- Volver" con papel rasgado ubicado abajo a la izquierda sobre el escritorio y con el mismo Hover 110% turquesa y Presión 105%
+        CreateSpriteMenuButton(credRect, "Btn_VolverCreditos", _btnVolverSprite, font, "⬅  Volver",
+            new Vector2(-745f, -450f), new Vector2(348f, 116f), () => _creditsSubPanel.SetActive(false));
+
+        _creditsSubPanel.SetActive(false);
+        _titleMenuPanel.SetActive(false);
+    }
+
+    private void BuildOptionsScreen(Transform canvasTransform, Font font)
+    {
         // PANTALLA COMPLETA DE OPCIONES ILUSTRADA (Fondo Pizarra de Corcho + 3 Sliders + Botón "<- Volver" abajo a la izquierda)
-        RectTransform optRect = CreatePanel(bgRect, "Panel_PantallaOpciones",
+        RectTransform optRect = CreatePanel(canvasTransform, "Panel_PantallaOpciones",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, Color.white);
         _optionsSubPanel = optRect.gameObject;
@@ -1199,67 +1241,68 @@ public class GameManager : MonoBehaviour
         CreateSpriteMenuButton(optRect, "Btn_VolverOpciones", _btnVolverSprite, font, "⬅  Volver",
             new Vector2(-745f, -450f), new Vector2(348f, 116f), () => _optionsSubPanel.SetActive(false));
 
-        // PANTALLA COMPLETA DE CRÉDITOS ILUSTRADA (Fondo Pizarra de Corcho con Dibu y Cuti + Botón "<- Volver" abajo a la izquierda)
-        RectTransform credRect = CreatePanel(bgRect, "Panel_PantallaCreditos",
-            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero, Color.white);
-        _creditsSubPanel = credRect.gameObject;
-
-        Image credBgImg = credRect.GetComponent<Image>();
-        if (_creditsBackgroundSprite != null)
-        {
-            credBgImg.sprite = _creditsBackgroundSprite;
-            credBgImg.color = Color.white;
-            credBgImg.preserveAspect = false;
-        }
-        else
-        {
-            credBgImg.color = new Color(0.08f, 0.05f, 0.14f, 0.98f);
-        }
-
-        // Botón "<- Volver" con papel rasgado ubicado abajo a la izquierda sobre el escritorio y con el mismo Hover 110% turquesa y Presión 105%
-        CreateSpriteMenuButton(credRect, "Btn_VolverCreditos", _btnVolverSprite, font, "⬅  Volver",
-            new Vector2(-745f, -450f), new Vector2(348f, 116f), () => _creditsSubPanel.SetActive(false));
-
-        // Por defecto ambos subpaneles arrancan ocultos para que la portada se vea igual a tu imagen de referencia
         _optionsSubPanel.SetActive(false);
-        _creditsSubPanel.SetActive(false);
-        _titleMenuPanel.SetActive(false);
     }
 
     private void BuildPauseMenu(Transform canvasTransform, Font font)
     {
+        // Velo oscuro violáceo translúcido para que se vea la clínica congelada atrás sin confundirse con el Menú Principal
         RectTransform pauseOverlay = CreatePanel(canvasTransform, "Panel_MenuPausa",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero, new Color(0.04f, 0.05f, 0.09f, 0.78f));
+            Vector2.zero, Vector2.zero, new Color(0.06f, 0.03f, 0.11f, 0.74f));
         _pauseMenuPanel = pauseOverlay.gameObject;
+        pauseOverlay.GetComponent<Image>().color = new Color(0.06f, 0.03f, 0.11f, 0.74f);
 
-        RectTransform card = CreatePanel(pauseOverlay, "Card_Pausa",
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(560f, 560f), new Color(0.09f, 0.07f, 0.15f, 0.96f));
+        // Si quedó la cajita gris vieja o botones viejos guardados en la escena, los apago
+        Transform oldCard = pauseOverlay.Find("Card_Pausa");
+        if (oldCard != null) oldCard.gameObject.SetActive(false);
+        Transform oldReintentar = pauseOverlay.Find("Btn_Pause_Reintentar");
+        if (oldReintentar != null) oldReintentar.gameObject.SetActive(false);
+        Transform oldSalir = pauseOverlay.Find("Btn_Pause_Salir");
+        if (oldSalir != null) oldSalir.gameObject.SetActive(false);
 
-        CreateText(card, "Pause_Title", font, 40, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -55f), new Vector2(-40f, 56f),
-            new Color(0.38f, 1f, 0.88f)).text = "JUEGO EN PAUSA";
+        // Logo reciclado centrado (un poco más abajo para no pisar el banner de notificaciones de arriba)
+        Transform existingLogo = pauseOverlay.Find("Logo_Pausa");
+        GameObject logoObj = existingLogo != null ? existingLogo.gameObject : new GameObject("Logo_Pausa");
+        RectTransform logoRect = logoObj.GetComponent<RectTransform>();
+        if (existingLogo == null)
+        {
+            logoObj.transform.SetParent(pauseOverlay, false);
+            logoRect = logoObj.AddComponent<RectTransform>();
+            logoRect.anchorMin = new Vector2(0.5f, 0.5f);
+            logoRect.anchorMax = new Vector2(0.5f, 0.5f);
+            logoRect.pivot = new Vector2(0.5f, 0.5f);
+        }
+        logoRect.anchoredPosition = new Vector2(0f, 255f);
+        logoRect.sizeDelta = new Vector2(540f, 270f);
 
-        float currentVol = AudioManager.Instance != null ? AudioManager.Instance.MasterVolume : AudioListener.volume;
-        _pauseVolumeLabelText = CreateText(card, "Pause_VolLabel", font, 20, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -115f), new Vector2(-40f, 30f), Color.white);
-        _pauseVolumeLabelText.text = $"Volumen General: {Mathf.RoundToInt(currentVol * 100f)}%";
+        Image logoImg = logoObj.GetComponent<Image>();
+        if (logoImg == null) logoImg = logoObj.AddComponent<Image>();
+        logoImg.raycastTarget = false;
+        if (_menuLogoSprite != null)
+        {
+            logoImg.sprite = _menuLogoSprite;
+            logoImg.preserveAspect = true;
+            logoImg.color = Color.white;
+        }
 
-        _pauseVolumeSlider = CreateVolumeSlider(card, currentVol, new Vector2(0f, 125f));
+        Text pauseSub = CreateText(pauseOverlay, "Pause_Subtitle", font, 24, FontStyle.Bold, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 102f), new Vector2(600f, 38f),
+            new Color(0.52f, 0.98f, 0.90f, 0.95f));
+        pauseSub.text = "JUEGO EN PAUSA  ·  ESC para volver";
+        pauseSub.rectTransform.anchoredPosition = new Vector2(0f, 102f);
 
-        CreateButton(card, "Btn_Resume", font, "▶  REANUDAR PARTIDA (ESC)",
-            new Vector2(0f, 45f), new Vector2(340f, 54f), new Color(0.18f, 0.68f, 0.44f), ResumeFromPause);
+        // Solo 3 botones bien proporcionados visualmente entre sí: Volver, Opciones y Menú Principal
+        CreateSpriteMenuButton(pauseOverlay, "Btn_Pause_Volver", _btnVolverSprite, font, "⬅  Volver",
+            new Vector2(0f, 2f), new Vector2(368f, 118f), ResumeFromPause);
 
-        CreateButton(card, "Btn_RestartPause", font, "↻  REINICIAR NIVEL",
-            new Vector2(0f, -25f), new Vector2(340f, 54f), new Color(0.65f, 0.48f, 0.20f), RestartLevel);
+        CreateSpriteMenuButton(pauseOverlay, "Btn_Pause_Opciones", _btnOpcionesSprite, font, "⚙  Opciones",
+            new Vector2(0f, -122f), new Vector2(416f, 134f), ToggleOptionsPanel);
 
-        CreateButton(card, "Btn_MainMenuPause", font, "⌂  VOLVER AL MENÚ DE INICIO",
-            new Vector2(0f, -95f), new Vector2(340f, 54f), new Color(0.24f, 0.46f, 0.74f), ReturnToMainMenu);
-
-        CreateButton(card, "Btn_QuitPause", font, "✖  SALIR DEL JUEGO",
-            new Vector2(0f, -165f), new Vector2(340f, 54f), new Color(0.72f, 0.22f, 0.26f), QuitGame);
+        CreateSpriteMenuButton(pauseOverlay, "Btn_Pause_MenuPrincipal", _btnMenuPrincipalVictorySprite, font, "⌂  Menú Principal",
+            new Vector2(0f, -246f), new Vector2(388f, 126f), ReturnToMainMenu,
+            new Color(1.00f, 0.88f, 0.25f),
+            new Color(0.92f, 0.52f, 0.08f));
 
         _pauseMenuPanel.SetActive(false);
     }
