@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/19/2026, 3:11:10 PM
+ * @LastEditTime: 11/19/2026, 4:08:17 PM
  * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
  *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
  *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.
@@ -49,6 +49,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private Sprite _creditsBackgroundSprite;
     [SerializeField] private Sprite _btnVolverSprite;
 
+    [Header("Sprites de Pantalla de Opciones (Assets/Options)")]
+    [SerializeField] private Sprite _optionsBackgroundSprite;
+
     [Header("Sprites de Pantalla de Game Over (Assets/GameOver)")]
     [SerializeField] private Sprite _gameOverBackgroundSprite;
     [SerializeField] private Sprite _btnReintentarGameOverSprite;
@@ -94,7 +97,13 @@ public class GameManager : MonoBehaviour
     private GameObject _optionsSubPanel;
     private GameObject _creditsSubPanel;
     private Text _volumeLabelText;
+    private Text _musicVolumeLabelText;
+    private Text _sfxVolumeLabelText;
     private Slider _titleVolumeSlider;
+    private Slider _titleMusicVolumeSlider;
+    private Slider _titleSfxVolumeSlider;
+    private float _lastSfxPreviewTime = -10f;
+    private static Sprite _sliderKnobSprite;
 
     // Pantalla de Historia / Informe de Emergencia (3 diapositivas separadas al darle Jugar)
     private GameObject _introStoryPanel;
@@ -231,6 +240,9 @@ public class GameManager : MonoBehaviour
             _creditsBackgroundSprite = LoadSpriteFromAssetFolder("Creditos", "Fondo Créditos del Rescate Veterinario.png");
         if (_btnVolverSprite == null)
             _btnVolverSprite = LoadSpriteFromAssetFolder("Creditos", "Botón de papel rasgado “Volver”.png");
+
+        if (_optionsBackgroundSprite == null)
+            _optionsBackgroundSprite = LoadSpriteFromAssetFolder("Options", "Opciones de Rescate Veterinario.png");
 
         if (_gameOverBackgroundSprite == null)
             _gameOverBackgroundSprite = LoadSpriteFromAssetFolder("GameOver", "Pantalla Game Over de Rescate Veterinario.png");
@@ -720,6 +732,23 @@ public class GameManager : MonoBehaviour
     {
         if (_optionsSubPanel == null) return;
         bool nextState = !_optionsSubPanel.activeSelf;
+        if (nextState && AudioManager.Instance != null)
+        {
+            if (_titleVolumeSlider != null)
+                _titleVolumeSlider.SetValueWithoutNotify(AudioManager.Instance.MasterVolume);
+            if (_volumeLabelText != null)
+                _volumeLabelText.text = $"{Mathf.RoundToInt(AudioManager.Instance.MasterVolume * 100f)}%";
+
+            if (_titleMusicVolumeSlider != null)
+                _titleMusicVolumeSlider.SetValueWithoutNotify(AudioManager.Instance.MusicVolume);
+            if (_musicVolumeLabelText != null)
+                _musicVolumeLabelText.text = $"{Mathf.RoundToInt(AudioManager.Instance.MusicVolume * 100f)}%";
+
+            if (_titleSfxVolumeSlider != null)
+                _titleSfxVolumeSlider.SetValueWithoutNotify(AudioManager.Instance.SfxVolume);
+            if (_sfxVolumeLabelText != null)
+                _sfxVolumeLabelText.text = $"{Mathf.RoundToInt(AudioManager.Instance.SfxVolume * 100f)}%";
+        }
         _optionsSubPanel.SetActive(nextState);
         if (_creditsSubPanel != null) _creditsSubPanel.SetActive(false);
     }
@@ -739,16 +768,42 @@ public class GameManager : MonoBehaviour
         else
             AudioListener.volume = value;
 
-        string text = $"Volumen General: {Mathf.RoundToInt(value * 100f)}%";
+        int pct = Mathf.RoundToInt(value * 100f);
         if (_volumeLabelText != null)
-            _volumeLabelText.text = text;
+            _volumeLabelText.text = $"{pct}%";
         if (_pauseVolumeLabelText != null)
-            _pauseVolumeLabelText.text = text;
+            _pauseVolumeLabelText.text = $"Volumen General: {pct}%";
 
         if (_titleVolumeSlider != null && !Mathf.Approximately(_titleVolumeSlider.value, value))
             _titleVolumeSlider.SetValueWithoutNotify(value);
         if (_pauseVolumeSlider != null && !Mathf.Approximately(_pauseVolumeSlider.value, value))
             _pauseVolumeSlider.SetValueWithoutNotify(value);
+    }
+
+    private void OnMusicVolumeSliderChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.SetMusicVolume(value);
+
+        if (_musicVolumeLabelText != null)
+            _musicVolumeLabelText.text = $"{Mathf.RoundToInt(value * 100f)}%";
+    }
+
+    private void OnSfxVolumeSliderChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetSfxVolume(value);
+            // Toco un sonidito suave cada tanto mientras arrastrás el slider así escuchás el volumen real de los SFX
+            if (Time.unscaledTime - _lastSfxPreviewTime >= 0.14f)
+            {
+                _lastSfxPreviewTime = Time.unscaledTime;
+                AudioManager.Instance.PlayUIHover();
+            }
+        }
+
+        if (_sfxVolumeLabelText != null)
+            _sfxVolumeLabelText.text = $"{Mathf.RoundToInt(value * 100f)}%";
     }
 
     public void RestartLevel()
@@ -1090,29 +1145,59 @@ public class GameManager : MonoBehaviour
         CreateSpriteMenuButton(bgRect, "Btn_Salir", _btnSalirSprite, font, "✖  Salir",
             new Vector2(columnX, -374f), btnSize, QuitGame);
 
-        // SUBPANEL FLOTANTE DE OPCIONES (se abre a la derecha al tocar "Opciones")
-        RectTransform optRect = CreatePanel(bgRect, "SubPanel_Opciones",
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(180f, -60f), new Vector2(480f, 320f), new Color(0.08f, 0.05f, 0.14f, 0.94f));
+        // Si quedó un SubPanel_Opciones viejo guardado en la escena, lo apago para que no se pise con la pantalla nueva
+        Transform oldOpt = bgRect.Find("SubPanel_Opciones");
+        if (oldOpt != null) oldOpt.gameObject.SetActive(false);
+
+        // PANTALLA COMPLETA DE OPCIONES ILUSTRADA (Fondo Pizarra de Corcho + 3 Sliders + Botón "<- Volver" abajo a la izquierda)
+        RectTransform optRect = CreatePanel(bgRect, "Panel_PantallaOpciones",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, Color.white);
         _optionsSubPanel = optRect.gameObject;
 
-        CreateText(optRect, "Opt_Title", font, 28, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -42f), new Vector2(-30f, 40f),
-            new Color(0.38f, 1f, 0.88f)).text = "OPCIONES DE SONIDO";
+        Image optBgImg = optRect.GetComponent<Image>();
+        if (_optionsBackgroundSprite != null)
+        {
+            optBgImg.sprite = _optionsBackgroundSprite;
+            optBgImg.color = Color.white;
+            optBgImg.preserveAspect = false;
+        }
+        else
+        {
+            optBgImg.color = new Color(0.08f, 0.05f, 0.14f, 0.98f);
+        }
 
-        float currentVol = AudioManager.Instance != null ? AudioManager.Instance.MasterVolume : AudioListener.volume;
-        _volumeLabelText = CreateText(optRect, "Vol_Label", font, 23, FontStyle.Bold, TextAnchor.MiddleCenter,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -100f), new Vector2(-30f, 36f), Color.white);
-        _volumeLabelText.text = $"Volumen General: {Mathf.RoundToInt(currentVol * 100f)}%";
+        float currentMaster = AudioManager.Instance != null ? AudioManager.Instance.MasterVolume : AudioListener.volume;
+        float currentMusic = AudioManager.Instance != null ? AudioManager.Instance.MusicVolume : 1f;
+        float currentSfx = AudioManager.Instance != null ? AudioManager.Instance.SfxVolume : 1f;
 
-        _titleVolumeSlider = CreateVolumeSlider(optRect, currentVol, new Vector2(0f, 0f));
+        Color percentColor = new Color(0.30f, 0.11f, 0.36f, 1f);
+        Vector2 sliderSize = new Vector2(496f, 36f);
 
-        CreateText(optRect, "Opt_Hint", font, 17, FontStyle.Normal, TextAnchor.MiddleCenter,
-            new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 95f), new Vector2(-40f, 54f),
-            new Color(0.82f, 0.88f, 0.96f)).text = "Deslizá la barra para ajustar el volumen de la música y efectos.";
+        // 1) Volumen General (adentro de la primera cápsula punteada)
+        _volumeLabelText = CreateText(optRect, "Opt_MasterPct", font, 28, FontStyle.Bold, TextAnchor.MiddleRight,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(218f, 70f), new Vector2(180f, 38f), percentColor);
+        _volumeLabelText.text = $"{Mathf.RoundToInt(currentMaster * 100f)}%";
+        _titleVolumeSlider = CreateOptionsSlider(optRect, "Slider_VolumenGeneral", currentMaster,
+            new Vector2(60f, 22f), sliderSize, new Color(0.18f, 0.84f, 0.74f, 1f), OnVolumeSliderChanged);
 
-        CreateButton(optRect, "Btn_CloseOptions", font, "CERRAR",
-            new Vector2(0f, -115f), new Vector2(180f, 44f), new Color(0.20f, 0.78f, 0.68f), () => _optionsSubPanel.SetActive(false));
+        // 2) Música (adentro de la segunda cápsula punteada)
+        _musicVolumeLabelText = CreateText(optRect, "Opt_MusicPct", font, 28, FontStyle.Bold, TextAnchor.MiddleRight,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(218f, -60f), new Vector2(180f, 38f), percentColor);
+        _musicVolumeLabelText.text = $"{Mathf.RoundToInt(currentMusic * 100f)}%";
+        _titleMusicVolumeSlider = CreateOptionsSlider(optRect, "Slider_VolumenMusica", currentMusic,
+            new Vector2(60f, -108f), sliderSize, new Color(0.98f, 0.72f, 0.16f, 1f), OnMusicVolumeSliderChanged);
+
+        // 3) Efectos SFX (adentro de la tercera cápsula punteada)
+        _sfxVolumeLabelText = CreateText(optRect, "Opt_SfxPct", font, 28, FontStyle.Bold, TextAnchor.MiddleRight,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(218f, -190f), new Vector2(180f, 38f), percentColor);
+        _sfxVolumeLabelText.text = $"{Mathf.RoundToInt(currentSfx * 100f)}%";
+        _titleSfxVolumeSlider = CreateOptionsSlider(optRect, "Slider_VolumenSFX", currentSfx,
+            new Vector2(60f, -239f), sliderSize, new Color(0.92f, 0.28f, 0.58f, 1f), OnSfxVolumeSliderChanged);
+
+        // Botón "<- Volver" con papel rasgado abajo a la izquierda, igual que en Créditos
+        CreateSpriteMenuButton(optRect, "Btn_VolverOpciones", _btnVolverSprite, font, "⬅  Volver",
+            new Vector2(-745f, -450f), new Vector2(348f, 116f), () => _optionsSubPanel.SetActive(false));
 
         // PANTALLA COMPLETA DE CRÉDITOS ILUSTRADA (Fondo Pizarra de Corcho con Dibu y Cuti + Botón "<- Volver" abajo a la izquierda)
         RectTransform credRect = CreatePanel(bgRect, "Panel_PantallaCreditos",
@@ -1388,6 +1473,110 @@ public class GameManager : MonoBehaviour
         return slider;
     }
 
+    // Armo cada slider de la pantalla de Opciones adentro de las cápsulas punteadas del fondo ilustrado
+    private Slider CreateOptionsSlider(Transform parent, string name, float initialValue, Vector2 anchoredPos, Vector2 size, Color fillColor, UnityEngine.Events.UnityAction<float> onValueChanged)
+    {
+        Transform existing = parent.Find(name);
+        if (existing != null)
+        {
+            Slider existingSlider = existing.GetComponent<Slider>();
+            if (existingSlider != null)
+            {
+                existingSlider.SetValueWithoutNotify(initialValue);
+                existingSlider.onValueChanged.RemoveAllListeners();
+                existingSlider.onValueChanged.AddListener(onValueChanged);
+                return existingSlider;
+            }
+        }
+
+        GameObject sliderObj = new GameObject(name);
+        sliderObj.transform.SetParent(parent, false);
+        RectTransform sliderRect = sliderObj.AddComponent<RectTransform>();
+        sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
+        sliderRect.anchorMax = new Vector2(0.5f, 0.5f);
+        sliderRect.sizeDelta = size;
+        sliderRect.anchoredPosition = anchoredPos;
+
+        // Fondo translúcido violeta suave para que acompañe la cápsula dibujada
+        CreatePanel(sliderRect, "Background",
+            new Vector2(0f, 0.22f), new Vector2(1f, 0.78f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, new Color(0.35f, 0.14f, 0.38f, 0.28f));
+
+        GameObject fillArea = new GameObject("Fill Area");
+        fillArea.transform.SetParent(sliderRect, false);
+        RectTransform fillAreaRect = fillArea.AddComponent<RectTransform>();
+        fillAreaRect.anchorMin = new Vector2(0f, 0.22f);
+        fillAreaRect.anchorMax = new Vector2(1f, 0.78f);
+        fillAreaRect.offsetMin = new Vector2(6f, 0f);
+        fillAreaRect.offsetMax = new Vector2(-6f, 0f);
+
+        RectTransform fill = CreatePanel(fillAreaRect, "Fill",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, fillColor);
+
+        GameObject handleArea = new GameObject("Handle Slide Area");
+        handleArea.transform.SetParent(sliderRect, false);
+        RectTransform handleAreaRect = handleArea.AddComponent<RectTransform>();
+        handleAreaRect.anchorMin = Vector2.zero;
+        handleAreaRect.anchorMax = Vector2.one;
+        handleAreaRect.offsetMin = new Vector2(18f, 0f);
+        handleAreaRect.offsetMax = new Vector2(-18f, 0f);
+
+        RectTransform handle = CreatePanel(handleAreaRect, "Handle",
+            new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(36f, 36f), Color.white);
+        Image handleImg = handle.GetComponent<Image>();
+        handleImg.sprite = GetOrCreateSliderKnobSprite();
+
+        Slider slider = sliderObj.AddComponent<Slider>();
+        slider.fillRect = fill;
+        slider.handleRect = handle;
+        slider.targetGraphic = handleImg;
+        slider.direction = Slider.Direction.LeftToRight;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.value = initialValue;
+        slider.onValueChanged.AddListener(onValueChanged);
+        return slider;
+    }
+
+    // Genero un circulito con borde violeta oscuro en memoria para el tirador de los sliders de Opciones
+    private static Sprite GetOrCreateSliderKnobSprite()
+    {
+        if (_sliderKnobSprite != null) return _sliderKnobSprite;
+
+        const int size = 48;
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        float center = (size - 1) * 0.5f;
+        float outerR = size * 0.46f;
+        float innerR = size * 0.34f;
+        Color borderCol = new Color(0.30f, 0.11f, 0.36f, 1f);
+        Color fillCol = new Color(1f, 0.98f, 0.94f, 1f);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                if (d <= innerR)
+                    tex.SetPixel(x, y, fillCol);
+                else if (d <= outerR)
+                    tex.SetPixel(x, y, borderCol);
+                else if (d <= outerR + 1.2f)
+                    tex.SetPixel(x, y, new Color(borderCol.r, borderCol.g, borderCol.b, Mathf.Clamp01(outerR + 1.2f - d)));
+                else
+                    tex.SetPixel(x, y, Color.clear);
+            }
+        }
+        tex.Apply();
+
+        _sliderKnobSprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
+        return _sliderKnobSprite;
+    }
+
     private RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color bgColor)
     {
         Transform existing = parent.Find(name);
@@ -1506,6 +1695,7 @@ public class MenuBuildAssetsPostprocessor : UnityEditor.Build.IPostprocessBuildW
 
         CopyPngFolder("MainMenu", dataDir);
         CopyPngFolder("Creditos", dataDir);
+        CopyPngFolder("Options", dataDir);
         CopyPngFolder("GameOver", dataDir);
         CopyPngFolder("Victory", dataDir);
     }

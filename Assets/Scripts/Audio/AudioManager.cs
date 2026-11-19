@@ -17,6 +17,8 @@ public class AudioManager : MonoBehaviour
     public static AudioManager Instance { get; private set; }
 
     private const string VolumePrefKey = "MasterVolume";
+    private const string MusicVolumePrefKey = "MusicVolume";
+    private const string SfxVolumePrefKey = "SfxVolume";
 
     [Header("Clips Opcionales (Si están vacíos se cargan de Resources/Audio o se generan por código)")]
     [SerializeField] private AudioClip _bgmClip;
@@ -38,8 +40,12 @@ public class AudioManager : MonoBehaviour
     private AudioSource _bgmSource;
     private AudioSource _sfxSource;
     private float _masterVolume = 0.8f;
+    private float _musicVolume = 1f;
+    private float _sfxVolume = 1f;
 
     public float MasterVolume => _masterVolume;
+    public float MusicVolume => _musicVolume;
+    public float SfxVolume => _sfxVolume;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoCreate()
@@ -63,12 +69,14 @@ public class AudioManager : MonoBehaviour
         DontDestroyOnLoad(gameObject);
 
         _masterVolume = PlayerPrefs.GetFloat(VolumePrefKey, 0.8f);
+        _musicVolume = PlayerPrefs.GetFloat(MusicVolumePrefKey, 1f);
+        _sfxVolume = PlayerPrefs.GetFloat(SfxVolumePrefKey, 1f);
         AudioListener.volume = _masterVolume;
 
         _bgmSource = gameObject.AddComponent<AudioSource>();
         _bgmSource.loop = true;
         _bgmSource.playOnAwake = false;
-        _bgmSource.volume = _menuMusicVolume;
+        _bgmSource.volume = _menuMusicVolume * _musicVolume;
 
         _sfxSource = gameObject.AddComponent<AudioSource>();
         _sfxSource.playOnAwake = false;
@@ -82,9 +90,9 @@ public class AudioManager : MonoBehaviour
     {
         if (_bgmSource == null) return;
 
-        // En el Menú Principal / Intro / Créditos suena a _menuMusicVolume (0.55), y al iniciar la partida baja suave a _gameplayMusicVolume (0.30)
+        // En el Menú Principal / Intro / Créditos / Opciones suena a _menuMusicVolume y en partida baja suave a _gameplayMusicVolume
         bool inMenu = GameManager.IsMenuOpen;
-        float targetVol = inMenu ? _menuMusicVolume : _gameplayMusicVolume;
+        float targetVol = (inMenu ? _menuMusicVolume : _gameplayMusicVolume) * _musicVolume;
         if (!Mathf.Approximately(_bgmSource.volume, targetVol))
         {
             _bgmSource.volume = Mathf.MoveTowards(_bgmSource.volume, targetVol, _volumeDuckSpeed * Time.unscaledDeltaTime);
@@ -103,6 +111,25 @@ public class AudioManager : MonoBehaviour
         _masterVolume = Mathf.Clamp01(volume);
         AudioListener.volume = _masterVolume;
         PlayerPrefs.SetFloat(VolumePrefKey, _masterVolume);
+        PlayerPrefs.Save();
+    }
+
+    public void SetMusicVolume(float volume)
+    {
+        _musicVolume = Mathf.Clamp01(volume);
+        if (_bgmSource != null)
+        {
+            float baseVol = GameManager.IsMenuOpen ? _menuMusicVolume : _gameplayMusicVolume;
+            _bgmSource.volume = baseVol * _musicVolume;
+        }
+        PlayerPrefs.SetFloat(MusicVolumePrefKey, _musicVolume);
+        PlayerPrefs.Save();
+    }
+
+    public void SetSfxVolume(float volume)
+    {
+        _sfxVolume = Mathf.Clamp01(volume);
+        PlayerPrefs.SetFloat(SfxVolumePrefKey, _sfxVolume);
         PlayerPrefs.Save();
     }
 
@@ -125,9 +152,9 @@ public class AudioManager : MonoBehaviour
 
     private void PlaySFX(AudioClip clip, float volumeScale = 1f)
     {
-        if (_sfxSource != null && clip != null)
+        if (_sfxSource != null && clip != null && _sfxVolume > 0.001f)
         {
-            _sfxSource.PlayOneShot(clip, volumeScale);
+            _sfxSource.PlayOneShot(clip, volumeScale * _sfxVolume);
         }
     }
 
