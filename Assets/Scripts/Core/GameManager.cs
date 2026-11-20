@@ -2,7 +2,7 @@
  * @Author: Federico Marazzi
  * @Date: 11/11/2026, 7:08:00 PM
  * @LastEditors: Federico Marazzi
- * @LastEditTime: 11/19/2026, 4:08:17 PM
+ * @LastEditTime: 11/20/2026, 8:58:48 AM
  * @Description: Controlador general de la partida (Singleton), Pantalla de Menú de Inicio ilustrada
  *   (con fondo de recepción magenta, logo oficial y botones con efecto Hover 110% turquesa y Presionado 105%),
  *   Menú de Pausa independiente (ESC), Opciones de Sonido, Créditos, Pantallas de Victoria/Derrota y HUD.
@@ -1073,8 +1073,8 @@ public class GameManager : MonoBehaviour
             _btnJugarDeNuevoVictorySprite,
             font,
             "↻  Jugar de nuevo",
-            new Vector2(-248f, -416f),
-            new Vector2(498f, 166f),
+            new Vector2(-240f, -466f),
+            new Vector2(456f, 152f),
             RestartLevel,
             new Color(0.38f, 1.00f, 0.88f),
             new Color(0.18f, 0.83f, 0.71f)
@@ -1087,8 +1087,8 @@ public class GameManager : MonoBehaviour
             _btnMenuPrincipalVictorySprite,
             font,
             "⌂  Menú Principal",
-            new Vector2(240f, -416f),
-            new Vector2(460f, 154f),
+            new Vector2(236f, -466f),
+            new Vector2(422f, 141f),
             ReturnToMainMenu,
             new Color(1.00f, 0.88f, 0.25f),
             new Color(0.92f, 0.52f, 0.08f)
